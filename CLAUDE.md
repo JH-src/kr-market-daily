@@ -9,6 +9,7 @@
 ## 데이터
 - src/collect.py krx <시작일> <종료일> [초 예산] : 거래소 일별 원본 적재(이미 있는 날은 건너뜀, 휴장일은 data/_calendar/empty_days.txt)
 - src/collect.py customs : 관세청 10일 단위 수출 전체 재수집
+- src/collect.py customs_items : 관세청 품목별 월 수출(config/export_items.json의 HS 코드 합산, 최근 10년)
 - 거래소 시세는 수정주가가 아니다. 상장주식수 변화와 DART 공시로 보정한다.
 - 값은 전부 문자열, 빈값은 빈 문자열, 휴장일·당일 장중은 빈 배열.
 

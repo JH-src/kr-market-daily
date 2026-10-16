@@ -343,6 +343,48 @@ def exports():
     return res
 
 
+def export_items():
+    """관세청 품목별 월 수출(화장품·라면 등). 하루 평균은 거래소 개장일 수로 나눈 근사."""
+    p = os.path.join(DATA, 'customs', 'items_monthly.csv')
+    if not os.path.exists(p):
+        return None
+    d = pd.read_csv(p, dtype={'yymm': str})
+    pv = d.pivot(index='yymm', columns='item', values='exp_usd') / 1e6   # 백만 달러
+    days = sorted({os.path.basename(f)[:8] for f in glob.glob(os.path.join(DATA, 'stk', '20*', '*.csv.gz'))})
+    wd = pd.Series(days).str[:6].value_counts()
+    first_cal = min(days)[:6]
+    wdm = lambda ym: wd.get(ym, np.nan) if ym >= first_cal else np.nan
+    ym = pv.index.max()
+    y, m = int(ym[:4]), int(ym[4:])
+    py = f'{y - 1}{m:02d}'
+    pm = f'{y - (m == 1)}{12 if m == 1 else m - 1:02d}'
+    qe = [f'{y}{x:02d}' for x in range(1, 13)]
+    # 직전 완결 분기와 그 전 분기
+    q = (m // 3) - 1 if m % 3 else (m // 3) - 1
+    qn = m // 3  # 완결 분기 수(올해)
+    def qmonths(yy, qq):
+        return [f'{yy}{3 * qq + k:02d}' for k in (1, 2, 3)]
+    lq = (y, qn - 1) if qn >= 1 else (y - 1, 3)
+    pq = (lq[0], lq[1] - 1) if lq[1] >= 1 else (lq[0] - 1, 3)
+    ytd = [f'{y}{k:02d}' for k in range(1, m + 1)]
+    ytd_p = [f'{y - 1}{k:02d}' for k in range(1, m + 1)]
+    wsum = lambda ms: sum(wdm(x) for x in ms)
+    rows = []
+    for it in pv.columns:
+        v = pv[it]
+        g = lambda k: v.get(k, np.nan)
+        cur = g(ym)
+        dy = (cur / wdm(ym)) / (g(py) / wdm(py)) * 100 - 100
+        dm = (cur / wdm(ym)) / (g(pm) / wdm(pm)) * 100 - 100
+        qa, qb = sum(g(x) for x in qmonths(*lq)), sum(g(x) for x in qmonths(*pq))
+        ya, yb = sum(g(x) for x in ytd), sum(g(x) for x in ytd_p)
+        rows.append({'item': it, 'cur': cur, 'yoy': (cur / g(py) - 1) * 100, 'dyoy': dy, 'mom': (cur / g(pm) - 1) * 100, 'dmom': dm,
+                     'qoq': (qa / qb - 1) * 100, 'ytd': ya, 'ytd_yoy': (ya / yb - 1) * 100,
+                     'dytd': (ya / wsum(ytd)) / (yb / wsum(ytd_p)) * 100 - 100,
+                     'trend': [(v.get(f'{y}{k:02d}', np.nan) / v.get(f'{y - 1}{k:02d}', np.nan) - 1) * 100 for k in range(1, m + 1)]})
+    return {'ym': ym, 'rows': rows, 'q': f'{lq[0]}년 {lq[1] + 1}분기', 'wd': (wdm(ym), wdm(py), wdm(pm))}
+
+
 # ---------------------------------------------------------------- 4. 공시 이벤트
 def dart_events(asof, days_back=5):
     key = os.environ['DART_KEY']
@@ -676,6 +718,7 @@ def build(asof):
     mf = market_flows(asof)
     wat = watch_etfs(asof)
     ex = exports()
+    exi = export_items()
     ev = dart_events(asof)
     bo = breakout(px, asof)
     cand = candidates(px, asof, sec, mem, wat, bo)
@@ -815,6 +858,17 @@ def build(asof):
     if wd[0] and wd[1] and abs(wd[0] - wd[1]) >= 2:
         h.append(f"<div class=note>조업일수 차이가 커서(이번 {wd[0]:.0f}일 vs 전년 {wd[1]:.0f}일) 단순 전년비는 왜곡돼 있습니다. 하루 평균 기준을 우선 보세요.</div>")
     h.append(f"<img src='{chart_exports(ex)}'>")
+    if exi:
+        h.append(f"<h3>품목별 월 수출 ({exi['ym'][:4]}년 {int(exi['ym'][4:])}월 확정, 관세청 품목별 수출입실적)</h3>")
+        h.append("<table><tr><th>품목</th><th class=r>금액</th><th class=r>전년비</th><th class=r>전년비(하루 평균)</th><th class=r>전월비</th><th class=r>전월비(하루 평균)</th><th class=r>전분기비</th><th class=r>연초 누계</th><th class=r>누계 전년비</th><th class=r>누계(하루 평균)</th></tr>")
+        for r in exi['rows']:
+            h.append(f"<tr><td>{r['item']}</td><td class=r>{r['cur']:,.0f}</td><td class=r>{color_pct(r['yoy'],0)}</td><td class=r>{color_pct(r['dyoy'],0)}</td><td class=r>{color_pct(r['mom'],0)}</td><td class=r>{color_pct(r['dmom'],0)}</td>"
+                     f"<td class=r>{color_pct(r['qoq'],0)}</td><td class=r>{r['ytd']:,.0f}</td><td class=r>{color_pct(r['ytd_yoy'],0)}</td><td class=r>{color_pct(r['dytd'],0)}</td></tr>")
+        h.append("</table>")
+        tr = ' / '.join(f"{r['item']} " + ' '.join(fmt_pct(x, 0) for x in r['trend']) for r in exi['rows'])
+        h.append(f"<div class=note>단위 백만 달러. 전분기비는 {exi['q']} 기준. 조업일수는 거래소 개장일로 근사(이번 달 {exi['wd'][0]:.0f}일, 전년 같은 달 {exi['wd'][1]:.0f}일, 전월 {exi['wd'][2]:.0f}일). "
+                 f"품목 범위: 화장품 HS 3304(기초·색조 등), 라면 1902.30-1010, 김 마른김 1212.21 + 조미김 2008.99-5010, 전력용 변압기 8504.21~23. "
+                 f"올해 월별 전년비 흐름: {tr}</div>")
 
     # 4. 공시
     h.append(f"<h2>6. 공시 이벤트 ({ev['start']:%m/%d}~{ev['end']:%m/%d}, 유가·코스닥)</h2>")
