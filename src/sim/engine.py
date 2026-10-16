@@ -204,6 +204,7 @@ def score(C, i, picks, L, h):
         return None
     out = []
     kret = C.kospi.iloc[b] / C.kospi.iloc[a] - 1
+    ub = ubase(C, i, h, L)
     for _, p in picks.iterrows():
         c = p['code']
         path = C.P[c].iloc[a:b + 1]
