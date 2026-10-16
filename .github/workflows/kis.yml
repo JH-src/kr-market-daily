@@ -23,6 +23,7 @@ jobs:
         run: |
           cd src
           if grep -q probe ../kis/trigger.txt 2>/dev/null; then python3 kis_probe.py; fi
+          if grep -q speed ../kis/trigger.txt 2>/dev/null; then python3 kis_speed.py; exit 0; fi
           python3 kis_daily.py
       - name: 결과 저장
         run: |
