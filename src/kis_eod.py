@@ -54,6 +54,9 @@ def main():
             time.sleep(1)
         return None
 
+    fp = os.path.join(OUT, today + '.csv')
+    if os.path.exists(fp) and sum(1 for _ in open(fp)) - 1 >= 0.95 * len(mk):
+        print('이미 수집됨', today); return
     t0 = time.time()
     with ThreadPoolExecutor(8) as ex:
         rows = [r for r in ex.map(one, list(mk)) if r]
