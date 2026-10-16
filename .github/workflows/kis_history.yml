@@ -1,0 +1,31 @@
+name: kis-history
+on:
+  workflow_dispatch:
+  push:
+    paths: ['kis/history_trigger.txt']
+  schedule:
+    - cron: '15 */6 * * *'   # 남은 종목이 있으면 6시간마다 이어받기
+permissions:
+  contents: write
+concurrency:
+  group: kis
+  cancel-in-progress: false
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - name: 남은 종목 확인 후 과거 수급 적재
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: |
+          n=$(grep -cvxFf archive/kis_flows/_done.txt config/universe_kis.txt 2>/dev/null || wc -l < config/universe_kis.txt)
+          echo "남은 종목 $n"
+          if [ "$n" -gt 0 ]; then cd src && timeout 18600 python3 kis_history.py 18000 || true; fi
+      - name: 결과 저장
+        run: |
+          git config user.name "kis-bot"; git config user.email "kis-bot@users.noreply.github.com"
+          git add archive/kis_flows && git commit -q -m "한투 과거 수급 적재" || echo nothing
+          for i in 1 2 3; do git pull --rebase -q && git push && break; sleep 5; done
