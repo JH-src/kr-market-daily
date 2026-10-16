@@ -415,6 +415,192 @@ def breakout(px, asof):
     return sel.sort_values('vr', ascending=False).head(15)
 
 
+# ---------------------------------------------------------------- 심리·수급
+def _pct_rank(s, win=250, minp=100):
+    """각 날짜 값이 직전 win일(최소 minp일) 안에서 몇 % 위치인지(0~100)."""
+    return s.rolling(win, min_periods=minp).apply(lambda x: (x <= x[-1]).mean() * 100, raw=True)
+
+
+def fear_greed(px, reg, asof):
+    """자체 공포·탐욕 지수. 7개 구성요소를 각각 최근 1년 안의 위치(0~100)로 바꿔 평균한다(검증 전 참고 지표)."""
+    comp = {}
+    k = reg['kospi'][reg['kospi'].index <= asof]
+    comp['모멘텀(코스피/125일선)'] = (k / k.rolling(125).mean() - 1).dropna()
+    comp['시장 폭(60일선 위 종목 비율)'] = reg['breadth']
+    p = px[(px['BAS_DD'] <= asof) & ~px['ISU_NM'].str.contains('스팩') & ~px['ISU_NM'].str.match(r'.*우[B-C]?$')]
+    wide = p.pivot_table(index='BAS_DD', columns='ISU_CD', values='TDD_CLSPRC')
+    hi = wide.rolling(250, min_periods=240).max(); lo = wide.rolling(250, min_periods=240).min()
+    n = hi.notna().sum(axis=1)
+    hl = (((wide >= hi).sum(axis=1) - (wide <= lo).where(lo.notna()).sum(axis=1)) / n.replace(0, np.nan))[n > 500]
+    if len(hl.dropna()) >= 60:
+        comp['강도(신고가-신저가)'] = hl.dropna().rolling(5).mean().dropna()
+    vk = reg['vk']
+    comp['변동성(역방향)'] = -(vk / vk.rolling(50).mean()).dropna()
+    o = load('opt_summary')
+    if not o.empty:
+        o = o[o['PROD_NM'].isin(['코스피200 옵션', '코스피200 위클리(목) 옵션', '코스피200 위클리(월) 옵션'])]
+        o = o.assign(v=num(o['VOL'])).pivot_table(index='BAS_DD', columns='RGHT', values='v', aggfunc='sum')
+        o.index = pd.to_datetime(o.index)
+        if {'PUT', 'CALL'} <= set(o.columns):
+            comp['풋/콜 거래량(역방향)'] = -(o['PUT'] / o['CALL']).rolling(5).mean().dropna()
+    ktb = series_from('idx_bond', 'BND_IDX_GRP_NM', 'KTB 지수', 'TOT_EARNG_IDX')
+    if len(ktb) > 30:
+        sh = (k.pct_change(20) - ktb.reindex(k.index).ffill().pct_change(20)).dropna()
+        comp['주식-국채 20일 수익률 차'] = sh
+    etf = load('etf', ['BAS_DD', 'ISU_CD', 'LIST_SHRS'])
+    def units(c):
+        d = etf[etf['ISU_CD'] == c]
+        return pd.Series(num(d['LIST_SHRS']).values, index=pd.to_datetime(d['BAS_DD'])).sort_index()
+    lv, iv = units('122630'), units('252670')
+    if len(lv) > 30 and len(iv) > 30:
+        comp['레버리지/인버스 좌수 20일 변화'] = np.log(lv / iv).diff(20).dropna()
+    ranks = {nm: _pct_rank(s[s.index <= asof]) for nm, s in comp.items()}
+    df = pd.DataFrame(ranks).dropna(how='all')
+    # 가격·변동성 요소로 시장 심리를, 풋콜·레버리지는 개인 포지션 쏠림으로 따로 본다(급락일에 저가 매수 쏠림이 심리 지수를 끌어올려 읽기를 흐리는 것 방지)
+    crowd = [c for c in ['풋/콜 거래량(역방향)', '레버리지/인버스 좌수 20일 변화'] if c in df.columns]
+    core = [c for c in df.columns if c not in crowd]
+    total = df[core].mean(axis=1, skipna=True)[df[core].notna().sum(axis=1) >= 3]
+    cr = df[crowd].mean(axis=1, skipna=True).dropna() if crowd else pd.Series(dtype=float)
+    rows = [{'name': nm, 'val': df[nm].dropna().iloc[-1] if df[nm].notna().any() else np.nan, 'crowd': nm in crowd} for nm in df.columns]
+    def label(x):
+        return '극단적 공포' if x < 20 else '공포' if x < 40 else '중립' if x < 60 else '탐욕' if x < 80 else '극단적 탐욕'
+    t = total.dropna()
+    return {'rows': rows, 'now': t.iloc[-1] if len(t) else np.nan, 'w1': t.iloc[-6] if len(t) > 5 else np.nan,
+            'm1': t.iloc[-22] if len(t) > 21 else np.nan, 'label': label(t.iloc[-1]) if len(t) else '확인 불가', 'series': t, 'label_fn': label,
+            'crowd': cr.iloc[-1] if len(cr) else np.nan}
+
+
+def market_flows(asof):
+    """코스피·코스닥 투자자별 순매수(한투, 억원)와 증시자금."""
+    out = {'mk': [], 'funds': None}
+    a = asof.strftime('%Y%m%d')
+    for mkt, nm in [('kospi', '코스피'), ('kosdaq', '코스닥')]:
+        p = os.path.join(DATA, 'kis', f'mkt_investor_{mkt}.csv')
+        if not os.path.exists(p):
+            continue
+        d = pd.read_csv(p, dtype=str)
+        d = d[d['stck_bsop_date'] <= a].sort_values('stck_bsop_date')
+        if d.empty or d['stck_bsop_date'].iloc[-1] != a:
+            continue
+        for col, who in [('frgn_ntby_tr_pbmn', '외국인'), ('orgn_ntby_tr_pbmn', '기관'), ('mrbn_ntby_tr_pbmn', '연기금'), ('prsn_ntby_tr_pbmn', '개인')]:
+            v = num(d[col]) / 100
+            out['mk'].append({'mkt': nm, 'who': who, 'd1': v.iloc[-1], 'd5': v.iloc[-5:].sum(), 'd20': v.iloc[-20:].sum()})
+    p = os.path.join(DATA, 'kis', 'mktfunds.csv')
+    if os.path.exists(p):
+        f = pd.read_csv(p, dtype=str).sort_values('bsop_date')
+        f = f[f['bsop_date'] <= a]
+        if len(f) > 21:
+            dep, crd = num(f['cust_dpmn_amt']), num(f['crdt_loan_rmnd'])
+            out['funds'] = {'day': f['bsop_date'].iloc[-1], 'dep': dep.iloc[-1], 'dep20': (dep.iloc[-1] / dep.iloc[-21] - 1) * 100,
+                            'crd': crd.iloc[-1], 'crd20': (crd.iloc[-1] / crd.iloc[-21] - 1) * 100}
+    return out
+
+
+def rsi(close, n=14):
+    d = close.diff()
+    up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
+    dn = (-d.clip(upper=0)).ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
+    return 100 - 100 / (1 + up / dn)
+
+
+def watch_etfs(asof):
+    """추적 ETF 보유 종목과 직전 수집일 대비 신규 편입·편출·비중 변화."""
+    fs = sorted(glob.glob(os.path.join(DATA, 'kis', 'holdings', '*.csv')))
+    fs = [f for f in fs if os.path.basename(f)[:8] <= (asof + timedelta(days=1)).strftime('%Y%m%d')] or fs
+    if not fs:
+        return None
+    cur = pd.read_csv(fs[-1], dtype=str)
+    prev = pd.read_csv(fs[-2], dtype=str) if len(fs) > 1 else None
+    res = []
+    for sec, g in cur[cur['sector'].str.startswith('추적:')].groupby('sector', sort=False):
+        g = g.assign(w=num(g['weight'])).sort_values('w', ascending=False)
+        g = g[g['code'].str.fullmatch(r'\d{6}')]
+        item = {'name': sec[3:], 'n': len(g), 'top': list(zip(g['name'].head(5), g['w'].head(5))), 'codes': set(g['code']),
+                'new': [], 'out': [], 'up': [], 'base': None, 'capped': len(g) >= 30}
+        if prev is not None:
+            pg = prev[prev['sector'] == sec]
+            pg = pg.assign(w=num(pg['weight']))
+            pg = pg[pg['code'].str.fullmatch(r'\d{6}')]
+            if not pg.empty:
+                item['base'] = os.path.basename(fs[-2])[:8]
+                item['new'] = [(r['name'], r['w']) for _, r in g[~g['code'].isin(pg['code'])].iterrows()]
+                item['out'] = list(pg[~pg['code'].isin(g['code'])]['name'])
+                m = g.merge(pg[['code', 'w']], on='code', suffixes=('', '_p'))
+                m = m.assign(dw=m['w'] - m['w_p']).sort_values('dw', ascending=False)
+                item['up'] = [(r['name'], r['dw']) for _, r in m[m['dw'] >= 0.5].head(3).iterrows()]
+        res.append(item)
+    return {'day': os.path.basename(fs[-1])[:8], 'etfs': res}
+
+
+def candidates(px, asof, sec, mem, wat, bo):
+    """후보 종목과 들어갈 이유(근거)를 한 표로. 순위는 근거 개수 기준의 출발값이며 검증 전이다."""
+    stage = {s['name']: s['stage'] for s in sec}
+    pool = {}
+    def add(code, why):
+        pool.setdefault(code, set()).add(why)
+    hfs = sorted(glob.glob(os.path.join(DATA, 'kis', 'holdings', '*.csv')))
+    hd = pd.read_csv(hfs[-1], dtype=str) if hfs else pd.DataFrame(columns=['sector', 'code', 'name', 'weight'])
+    secmap = hd[~hd['sector'].str.startswith('추적:')].assign(w=lambda x: num(x['weight'])).sort_values('w').drop_duplicates('code', keep='last').set_index('code')['sector']
+    name2code = dict(zip(hd['name'], hd['code']))
+    for nm, m in mem.items():
+        if stage.get(nm) in ('주도', '초기'):
+            for n, w, r in m['lag']:
+                if n in name2code:
+                    add(name2code[n], f'{nm}({stage[nm]}) 섹터 후발')
+    cnt = {}
+    if wat:
+        for e in wat['etfs']:
+            for c in e['codes']:
+                cnt[c] = cnt.get(c, 0) + 1
+            for n, w in e['new']:
+                if n in name2code:
+                    add(name2code[n], f"{e['name']} " + ('상위 30 진입' if e['capped'] else '신규 편입'))
+        for c, n in cnt.items():
+            if n >= 2:
+                add(c, f'추적 ETF {n}곳 보유')
+    for c in bo.index:
+        add(c, '20일 신고가 돌파')
+    if not pool:
+        return []
+    p = px[px['BAS_DD'] <= asof]
+    close = p[p['ISU_CD'].isin(pool)].pivot_table(index='BAS_DD', columns='ISU_CD', values='TDD_CLSPRC')
+    last = p[p['BAS_DD'] == p['BAS_DD'].max()].set_index('ISU_CD')
+    # 수급(한투, 최근 20거래일 순매수, 백만원)
+    ff = sorted(glob.glob(os.path.join(DATA, 'kis', 'flows', '*.csv')))
+    fl = pd.concat([pd.read_csv(f, dtype=str) for f in ff]) if ff else pd.DataFrame(columns=['date', 'code', 'frgn', 'orgn'])
+    fl = fl[fl['date'] <= asof.strftime('%Y%m%d')]
+    rows = []
+    for c, why in pool.items():
+        if c not in last.index or c not in close.columns:
+            continue
+        s = close[c].dropna()
+        shr = p[p['ISU_CD'] == c].set_index('BAS_DD')['LIST_SHRS']
+        ok = len(shr) > 22 and abs(shr.iloc[-1] / shr.iloc[-22] - 1) <= 0.03
+        rv = rsi(s).iloc[-1] if ok and len(s) > 30 else np.nan
+        m1 = (s.iloc[-1] / s.iloc[-22] - 1) * 100 if ok and len(s) > 22 else np.nan
+        g = fl[fl['code'] == c].sort_values('date').tail(20)
+        fr = num(g['frgn']).sum() / 100 if len(g) >= 15 else np.nan
+        orr = num(g['orgn']).sum() / 100 if len(g) >= 15 else np.nan
+        cap = last.loc[c, 'MKTCAP'] / 1e8
+        why = set(why)
+        if not np.isnan(fr) and fr > 0 and orr > 0:
+            why.add('외국인·기관 동반 순매수(20일)')
+        if not np.isnan(rv) and 50 <= rv <= 65:
+            why.add('RSI 상승권(과열 전)')
+        warn = []
+        if not np.isnan(rv) and rv >= 70:
+            warn.append('RSI 과열')
+        if not np.isnan(rv) and rv <= 30:
+            warn.append('RSI 과매도(반등 확인 전)')
+        if not np.isnan(fr) and fr < 0 and orr < 0:
+            warn.append('외국인·기관 동반 순매도')
+        rows.append({'code': c, 'name': last.loc[c, 'ISU_NM'], 'sector': secmap.get(c, ''), 'stage': stage.get(secmap.get(c, ''), ''),
+                     'm1': m1, 'rsi': rv, 'fr': fr, 'or': orr, 'flow_cap': (fr + orr) / cap * 100 if cap and not np.isnan(fr) else np.nan,
+                     'n_etf': cnt.get(c, 0), 'why': sorted(why), 'warn': warn, 'cap': cap})
+    rows.sort(key=lambda x: (-(len(x['why']) - len(x['warn'])), -(x['flow_cap'] if not np.isnan(x['flow_cap']) else -99)))
+    return rows[:20]
+
+
 # ---------------------------------------------------------------- 그래프
 def chart_market(reg, asof):
     k = reg['kospi'][reg['kospi'].index <= asof].iloc[-260:]
@@ -465,7 +651,7 @@ table { width:100%; border-collapse:collapse; font-size:8.6pt; margin:4px 0 6px;
 th { text-align:left; color:#6b7280; font-weight:500; border-bottom:1px solid #d1d5db; padding:3px 4px; }
 td { border-bottom:1px solid #eef0f2; padding:3px 4px; font-variant-numeric: tabular-nums; }
 td.r, th.r { text-align:right; }
-.up { color:#c0392b; } .dn { color:#1f5fbf; } .mut { color:#9ca3af; }
+.up { color:#c0392b; } .dn { color:#1f5fbf; } .mut { color:#9ca3af; } td.r { white-space:nowrap; }
 .box { background:#f6f7f9; border-radius:6px; padding:8px 10px; margin:6px 0; }
 .tag { display:inline-block; padding:0 6px; border-radius:9px; font-size:8pt; background:#eef2ee; color:#2f6f4f; }
 .tag.hot { background:#fbeaea; color:#c0392b; } .tag.cold { background:#e9eff9; color:#1f5fbf; } .tag.neu { background:#f1f2f4; color:#6b7280; }
@@ -486,9 +672,13 @@ def build(asof):
     mac, glo = macro(asof)
     sec = sector_table(asof, reg['kospi'])
     mem, mem_day = sector_members(px, asof, sec)
+    fg = fear_greed(px, reg, asof)
+    mf = market_flows(asof)
+    wat = watch_etfs(asof)
     ex = exports()
     ev = dart_events(asof)
     bo = breakout(px, asof)
+    cand = candidates(px, asof, sec, mem, wat, bo)
     h = []
     h.append(f"<h1>국내 시장 일일 점검</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준 · 예시판(검증 전 출발값 적용)</div>")
     # 요약
@@ -498,6 +688,10 @@ def build(asof):
     k = reg['idx_rows'][0]
     h.append("<div class='box'><b>오늘의 요약</b><br>")
     h.append(f"· 시장 국면: <b>{reg['regime']}</b> — 코스피 {k['close']:,.0f}({color_pct(k['d1'])}), 200일선 대비 {fmt_pct(k['ma200'])}, 60일선 위 종목 {reg['breadth_last']:.0f}%, 변동성지수 {reg['vk_last']:.1f}(직전 50일 평균 {reg['vk_avg']:.1f})<br>")
+    fgs = f"{fg['now']:.0f}({fg['label']})" if not np.isnan(fg['now']) else '확인 불가'
+    fl = {(r['mkt'], r['who']): r for r in mf['mk']}
+    fk = fl.get(('코스피', '외국인'))
+    h.append(f"· 심리: 공포·탐욕 {fgs}" + (f" / 코스피 외국인 순매수 오늘 {fk['d1']:+,.0f}억, 20일 {fk['d20']:+,.0f}억" if fk else '') + "<br>")
     h.append(f"· 주도: {', '.join(x['name'] for x in lead) or '없음'} / 초기: {', '.join(x['name'] for x in early) or '없음'} / 과열 주의: {', '.join(x['name'] for x in hot) or '없음'}<br>")
     semi = [r for r in ex['rows'] if r['item'] == '반도체'][0]
     h.append(f"· 수출({ex['ym'][:4]}.{ex['ym'][4:]} {ex['per']}일): 반도체 전년비 {fmt_pct(semi['yoy'],0)}, 하루 평균 기준 {fmt_pct(semi['dyoy'],0)}<br>")
@@ -518,6 +712,24 @@ def build(asof):
     for nm, v in reg['lev'].items():
         h.append(f"<tr><td>{nm} 좌수 20일 변화</td><td class=r>{color_pct(v)}</td><td class=note>개인 쏠림 참고(역지표 성격)</td></tr>")
     h.append("</table>")
+    h.append("<h3>공포·탐욕 지수(자체 산출)</h3>")
+    if not np.isnan(fg['now']):
+        cw = f" / 개인 포지션 쏠림 {fg['crowd']:.0f}" if not np.isnan(fg['crowd']) else ''
+        h.append(f"<div class=box><b>{fg['now']:.0f} · {fg['label']}</b> &nbsp; 1주 전 {fg['w1']:.0f}, 1개월 전 {fg['m1']:.0f}{cw}</div>")
+        h.append("<table><tr><th>구성 요소</th><th class=r>최근 1년 중 위치</th></tr>")
+        for r in sorted(fg['rows'], key=lambda x: x['crowd']):
+            v = f"{r['val']:.0f}" if not np.isnan(r['val']) else '<span class=mut>기간 부족</span>'
+            h.append(f"<tr><td>{r['name']}{' — 개인 쏠림' if r['crowd'] else ''}</td><td class=r>{v}</td></tr>")
+        h.append("</table>")
+    h.append("<div class=note>각 요소를 최근 1년(최소 100거래일) 안에서 오늘 값이 어디쯤인지 0~100으로 바꿔 평균했습니다. 0에 가까울수록 공포, 100에 가까울수록 탐욕입니다. 지수 값은 가격·변동성 다섯 요소의 평균이고, 풋/콜과 레버리지 좌수는 '개인 포지션 쏠림'으로 따로 봅니다. 하락장에서 이 값이 높으면 저가 매수가 몰리고 있다는 뜻이라 바닥 신호로 보기 이릅니다. 미국 CNN 지수의 구성을 국내 자료로 옮긴 자체 지표이고, 매매 신호로서의 효과는 아직 검증 전입니다.</div>")
+    if mf['mk']:
+        h.append("<h3>투자자별 순매수 (억 원, 한국투자증권)</h3><table><tr><th>시장</th><th>투자자</th><th class=r>오늘</th><th class=r>5일</th><th class=r>20일</th></tr>")
+        for r in mf['mk']:
+            h.append(f"<tr><td>{r['mkt']}</td><td>{r['who']}</td><td class=r>{r['d1']:+,.0f}</td><td class=r>{r['d5']:+,.0f}</td><td class=r>{r['d20']:+,.0f}</td></tr>")
+        h.append("</table>")
+    if mf['funds']:
+        f_ = mf['funds']
+        h.append(f"<div class=note>증시자금({f_['day'][4:6]}/{f_['day'][6:]}): 고객예탁금 {f_['dep']/1e4:,.1f}조 원(20일 {fmt_pct(f_['dep20'])}), 신용융자 잔고 {f_['crd']/1e4:,.1f}조 원(20일 {fmt_pct(f_['crd20'])}). 신용 잔고가 예탁금보다 빠르게 늘면 빚투 쏠림으로 봅니다.</div>")
     h.append("<h3>금리·환율 (거래소 선물, 정규시장 최다 거래 월물)</h3><table><tr><th>항목</th><th class=r>종가</th><th class=r>전일비</th><th class=r>20일</th><th>읽는 법</th></tr>")
     for r in mac:
         h.append(f"<tr><td>{r['label']}</td><td class=r>{r['last']:,.2f}</td><td class=r>{color_pct(r['d1'],2)}</td><td class=r>{color_pct(r['m1'],2)}</td><td class=note>{r['note']}</td></tr>")
@@ -554,9 +766,46 @@ def build(asof):
         h.append("<div class=note>섹터 구성종목: 확인 불가(한투 수집 전)</div>")
     h.append("<div class=note>산업 섹터는 KRX 산업지수, 조선·방산·2차전지·전력기기·소부장은 순자산이 가장 큰 국내 테마 ETF의 순자산가치로 계산했습니다. 이번 예시판의 단계는 가격 축만 반영했고, 변화 축(수출·잠정실적·공급계약)과 섹터 내 확산도는 섹터 분류표 확정 후 붙입니다.</div>")
 
-    # 3. 수출
+    # 3. 추적 ETF
+    h.append("<h2>3. 액티브·전략 ETF가 담는 종목</h2>")
+    if wat and wat['etfs']:
+        h.append("<table><tr><th>ETF</th><th class=r>종목 수</th><th>비중 상위 5</th><th>신규 편입 / 편출 / 비중 확대</th></tr>")
+        for e in wat['etfs']:
+            top = ', '.join(f"{n} {w:.1f}%" for n, w in e['top'])
+            if e['base']:
+                a_, b_ = ('상위 30 진입', '상위 30 이탈') if e['capped'] else ('편입', '편출')
+                chg = ((f'{a_}: ' + ', '.join(n for n, w in e['new'])) if e['new'] else f'{a_} 없음') + ' / ' + \
+                      ((f'{b_}: ' + ', '.join(e['out'])) if e['out'] else f'{b_} 없음') + \
+                      ((' / 확대: ' + ', '.join(f"{n} {d:+.1f}%p" for n, d in e['up'])) if e['up'] else '')
+            else:
+                chg = '<span class=mut>비교 기준 없음(수집 첫날)</span>'
+            h.append(f"<tr><td style='white-space:nowrap'>{e['name']}</td><td class=r>{e['n']}</td><td>{top}</td><td>{chg}</td></tr>")
+        h.append("</table>")
+        base = next((e['base'] for e in wat['etfs'] if e['base']), None)
+        h.append(f"<div class=note>{wat['day'][4:6]}/{wat['day'][6:]} 한국투자증권 조회 기준" + (f", 변화는 {base[4:6]}/{base[6:]} 대비" if base else '') +
+                 ". 운용사가 매일 공개하는 편입 내역이라 운용역이 새로 담거나 비중을 늘린 종목이 그대로 드러납니다. TIGER 모멘텀은 지수형이라 변화는 정기 변경 때 몰립니다. 한투 조회가 ETF당 비중 상위 30종목까지만 주기 때문에, 30종목 이상 담은 ETF는 '상위 30 진입·이탈'로 표시하며 이것이 실제 신규 편입·편출과 다를 수 있습니다.</div>")
+    else:
+        h.append("<div class=note>확인 불가(한투 수집 전)</div>")
+
+    # 4. 후보와 근거
+    h.append("<h2>4. 후보 종목과 들어갈 이유</h2>")
+    if cand:
+        h.append("<table><tr><th>종목</th><th>섹터(단계)</th><th class=r>1개월</th><th class=r>RSI</th><th class=r>외국인 20일</th><th class=r>기관 20일</th><th class=r>수급/시총</th><th>근거 <span class=up>(주의)</span></th></tr>")
+        for c in cand:
+            sg = f"{c['sector']}({c['stage']})" if c['sector'] else '<span class=mut>–</span>'
+            fmt = lambda v: f"{v:+,.0f}억" if not np.isnan(v) else '<span class=mut>–</span>'
+            rv = f"{c['rsi']:.0f}" if not np.isnan(c['rsi']) else '<span class=mut>–</span>'
+            h.append(f"<tr><td style='white-space:nowrap'>{c['name']}</td><td>{sg}</td><td class=r>{color_pct(c['m1'])}</td><td class=r>{rv}</td><td class=r>{fmt(c['fr'])}</td><td class=r>{fmt(c['or'])}</td>"
+                     f"<td class=r>{fmt_pct(c['flow_cap'], 2)}</td><td style='font-size:8.5pt'>{', '.join(c['why'])}" + (f" <span class=up>({', '.join(c['warn'])})</span>" if c['warn'] else '') + "</td></tr>")
+        h.append("</table>")
+        h.append("<div class=note>후보는 (가) 주도·초기 섹터에서 덜 오른 종목, (나) 추적 ETF 2곳 이상 보유 또는 신규 편입, (다) 오늘 20일 신고가 돌파 종목을 모은 뒤 근거 수에서 주의 수를 뺀 값, 수급 순으로 늘어놓았습니다. "
+                 "RSI는 14일 기준으로 50~65는 상승 흐름이되 과열 전, 70 이상은 과열로 봅니다. 수급은 최근 20거래일 순매수 금액이고 수급/시총은 외국인+기관 순매수를 시가총액으로 나눈 값입니다. 공시 관문(재무·증자·지배구조)과 매도 규칙은 아직 붙이지 않은 단계라 매수 추천이 아닙니다.</div>")
+    else:
+        h.append("<div class=note>확인 불가(한투 수집 전)</div>")
+
+    # 5. 수출
     wd = ex['wd']
-    h.append("<h2>3. 수출 (관세청 10일 단위 잠정치)</h2>")
+    h.append("<h2>5. 수출 (관세청 10일 단위 잠정치)</h2>")
     h.append(f"<div class=note>최신: {ex['ym'][:4]}년 {ex['ym'][4:]}월 {ex['per']}일 · 단위 백만 달러 · 조업일수는 거래소 개장일로 근사(이번 {wd[0]:.0f}일, 전년 같은 기간 {wd[1]:.0f}일, 전월 같은 기간 {wd[2]:.0f}일). 연초 누계와 전분기 대비는 월 확정치({ex['last_full']}까지, 분기는 {ex['q_note']}) 기준.</div>")
     h.append("<table><tr><th>품목</th><th class=r>금액</th><th class=r>전년비</th><th class=r>전년비(하루 평균)</th><th class=r>전월비</th><th class=r>전월비(하루 평균)</th><th class=r>전분기비</th><th class=r>연초 누계</th><th class=r>누계 전년비</th></tr>")
     for r in ex['rows']:
@@ -568,7 +817,7 @@ def build(asof):
     h.append(f"<img src='{chart_exports(ex)}'>")
 
     # 4. 공시
-    h.append(f"<h2>4. 공시 이벤트 ({ev['start']:%m/%d}~{ev['end']:%m/%d}, 유가·코스닥)</h2>")
+    h.append(f"<h2>6. 공시 이벤트 ({ev['start']:%m/%d}~{ev['end']:%m/%d}, 유가·코스닥)</h2>")
     h.append("<h3>단일판매·공급계약 (매출액 대비 비율 상위)</h3><table><tr><th>회사</th><th>접수일</th><th class=r>계약금액(억 원)</th><th class=r>매출액 대비</th></tr>")
     for r in ev['supply'][:12]:
         amt = '–' if np.isnan(r['amt']) else f"{r['amt']:,.0f}"
@@ -583,13 +832,13 @@ def build(asof):
     h.append("<div class=note>오너 외 임원 장내매수는 특수관계인 대조를 거쳐 다음 판부터 표로 붙입니다.</div>")
 
     # 5. 가격 신호
-    h.append("<h2>5. 오늘 돌파 종목 (참고, 관문 미적용)</h2>")
+    h.append("<h2>7. 오늘 돌파 종목 (참고, 관문 미적용)</h2>")
     h.append("<div class=note>조건: 20일 신고가 + 거래대금이 직전 60일 중앙값의 2배 이상 + 시가총액 5천억 원 이상. 재무·지배구조 관문과 섹터 단계는 아직 적용하지 않았으므로 매수 후보가 아닙니다.</div>")
     h.append("<table><tr><th>종목</th><th>시장</th><th class=r>종가</th><th class=r>등락</th><th class=r>거래대금 배수</th><th class=r>시가총액(조 원)</th></tr>")
     for c, r in bo.iterrows():
         h.append(f"<tr><td>{r['ISU_NM']}</td><td>{r['MKT_NM']}</td><td class=r>{r['TDD_CLSPRC']:,.0f}</td><td class=r>{color_pct(r['FLUC_RT'],2)}</td><td class=r>{r['vr']:.1f}배</td><td class=r>{r['MKTCAP']/1e12:,.1f}</td></tr>")
     h.append("</table>")
-    h.append("<h2>데이터와 한계</h2><div class=note>거래소 Open API(일별 종가), OpenDART, 관세청 10일 단위 잠정치. 예시판은 2025년 6월 이후 시세만 사용해 6개월 초과·52주 지표는 기간이 짧을 수 있습니다. 시세는 수정주가가 아니라 액면분할·병합 종목은 이동평균이 일시적으로 틀릴 수 있습니다. 투자자별 매매·공매도 자료는 없습니다. 모든 판정 기준은 검증 전 출발값입니다.</div>")
+    h.append("<h2>데이터와 한계</h2><div class=note>거래소 Open API(일별 종가), 한국투자증권 Open API, OpenDART, 관세청 10일 단위 잠정치. 예시판은 2025년 6월 이후 시세만 사용해 6개월 초과·52주 지표는 기간이 짧을 수 있습니다. 시세는 수정주가가 아니라 액면분할·병합 종목은 이동평균이 일시적으로 틀릴 수 있습니다. 투자자별 매매·ETF 구성종목·증시자금은 한국투자증권 Open API(조회 전용)로 받습니다. 모든 판정 기준은 검증 전 출발값입니다.</div>")
     html = f"<html><head><meta charset='utf-8'><style>{CSS}</style></head><body>{''.join(h)}</body></html>"
     return html
 
