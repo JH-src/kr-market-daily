@@ -1,0 +1,23 @@
+name: kis
+on:
+  workflow_dispatch:
+  push:
+    paths: ['kis/trigger.txt']
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 한투 API 점검
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: |
+          if [ -z "$KIS_APP_KEY" ]; then mkdir -p data/kis/probe; echo '{"token":"Secrets 미설정"}' > data/kis/probe/summary.json; else python3 src/kis_probe.py; fi
+      - name: 결과 저장
+        run: |
+          git config user.name "kis-bot"; git config user.email "kis-bot@users.noreply.github.com"
+          git add data/kis && git commit -m "한투 API 점검 결과" || echo nothing
+          git pull --rebase -q && git push
