@@ -57,9 +57,12 @@ def fetch_period(year, rc, cmap, codes, refresh=False):
     need = [c for c in codes if c in cmap and (refresh or c not in have)]
     if need:
         key = os.environ['DART_KEY']
-        for i in range(0, len(need), 100):
-            part = need[i:i + 100]
-            d = _get(f"https://opendart.fss.or.kr/api/fnlttMultiAcnt.json?crtfc_key={key}&corp_code={','.join(cmap[c] for c in part)}&bsns_year={year}&reprt_code={rc}")
+        from concurrent.futures import ThreadPoolExecutor
+        parts = [need[i:i + 100] for i in range(0, len(need), 100)]
+        get = lambda part: (part, _get(f"https://opendart.fss.or.kr/api/fnlttMultiAcnt.json?crtfc_key={key}&corp_code={','.join(cmap[c] for c in part)}&bsns_year={year}&reprt_code={rc}"))
+        with ThreadPoolExecutor(int(os.environ.get('DART_THREADS', '1'))) as ex:
+            results = list(ex.map(get, parts))
+        for part, d in results:
             if d.get('status') not in ('000', '013'):
                 print('DART 실적 조회 실패', year, rc, d.get('status'), d.get('message')); continue
             res = {}
