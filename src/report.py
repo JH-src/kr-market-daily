@@ -6,6 +6,7 @@
 import base64, glob, gzip, io, json, os, re, sys, time, urllib.request, zipfile
 from datetime import date, datetime, timedelta
 import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
@@ -643,6 +644,140 @@ def candidates(px, asof, sec, mem, wat, bo):
     return rows[:20]
 
 
+# ---------------------------------------------------------------- 0. 원페이지 추천
+PICK_RULE = {'min_cap': 5000, 'min_val': 50, 'rsi_hot': 75, 'b_lag_floor': -15, 'b_ma60_floor': -5,
+             'rev_yoy': 10, 'n_max': {'위험선호': 5, '중립': 3, '위험회피': 2}}
+
+
+def fin_table(asof, codes):
+    """최근 분기 두 개의 매출·영업이익 전년 같은 분기 대비(연결 우선)."""
+    import dart_fin as D
+    ps, files = D.quarterly(asof, codes)
+    q = [x for x in ps if x[1] != '11011'][:2] or ps[:2]
+    t = {}
+    for i, k in enumerate(q):
+        d = pd.read_csv(files[k], dtype={'stock_code': str, 'rcept_no': str})
+        for _, r in d.iterrows():
+            e = t.setdefault(r['stock_code'], {})
+            sfx = '' if i == 0 else '_prev'
+            e['rev' + sfx], e['rev_py' + sfx], e['op' + sfx], e['op_py' + sfx] = r['rev'], r['rev_py'], r['op'], r['op_py']
+            if i == 0:
+                e['period'] = f"{str(k[0])[2:]}년 {D.RC[k[1]]}분기"
+    return t
+
+
+def _yoy(a, b):
+    return (a / b - 1) * 100 if pd.notna(a) and pd.notna(b) and b > 0 else np.nan
+
+
+def picks(px, asof, sec, wat, reg):
+    import dart_fin as D
+    R = PICK_RULE
+    stage = {s['name']: s for s in sec}
+    hfs = sorted(glob.glob(os.path.join(DATA, 'kis', 'holdings', '*.csv')))
+    if not hfs:
+        return None
+    hd = pd.read_csv(hfs[-1], dtype=str)
+    hd = hd[~hd['sector'].str.startswith('추적:') & hd['code'].str.fullmatch(r'\d{6}')]
+    hd = hd.assign(w=num(hd['weight'])).sort_values('w').drop_duplicates('code', keep='last')
+    hd = hd[hd['sector'].map(lambda s: stage.get(s, {}).get('stage') in ('주도', '초기'))]
+    if hd.empty:
+        return {'rows': [], 'watch': [], 'n_max': R['n_max'][reg['regime']], 'note': '주도·초기 섹터 없음'}
+    p = px[px['BAS_DD'] <= asof]
+    days = sorted(p['BAS_DD'].unique())
+    pp = p[p['ISU_CD'].isin(hd['code']) & p['BAS_DD'].isin(days[-130:])]
+    close = pp.pivot_table(index='BAS_DD', columns='ISU_CD', values='TDD_CLSPRC')
+    low = pp.pivot_table(index='BAS_DD', columns='ISU_CD', values='TDD_CLSPRC').rolling(20).min()
+    val = pp.pivot_table(index='BAS_DD', columns='ISU_CD', values='ACC_TRDVAL')
+    shr = pp.pivot_table(index='BAS_DD', columns='ISU_CD', values='LIST_SHRS')
+    last = p[p['BAS_DD'] == days[-1]].set_index('ISU_CD')
+    act = {}
+    if wat:
+        for e in wat['etfs']:
+            for c in e['codes']:
+                act.setdefault(c, []).append(e['name'])
+            for n, w in e['new']:
+                pass
+    newin = {n for e in (wat['etfs'] if wat else []) for n, w in e['new']}
+    ff = sorted(glob.glob(os.path.join(DATA, 'kis', 'flows', '*.csv')))
+    fl = pd.concat([pd.read_csv(f, dtype=str) for f in ff]) if ff else pd.DataFrame(columns=['date', 'code', 'frgn', 'orgn'])
+    fl = fl[fl['date'] <= asof.strftime('%Y%m%d')]
+    fin = fin_table(asof, list(hd['code']))
+    cand = []
+    for _, h in hd.iterrows():
+        c, sname = h['code'], h['sector']
+        if c not in close.columns or c not in last.index:
+            continue
+        s = close[c].dropna()
+        if len(s) < 64:
+            continue
+        sh = shr[c].dropna()
+        if abs(sh.iloc[-1] / sh.iloc[-64] - 1) > 0.03:
+            continue   # 3개월 안 분할·병합 등: 시세 비교 불가
+        cap = last.loc[c, 'MKTCAP'] / 1e8
+        v20 = val[c].iloc[-20:].mean() / 1e8
+        if cap < R['min_cap'] or v20 < R['min_val']:
+            continue
+        S = stage[sname]
+        r1, r3 = (s.iloc[-1] / s.iloc[-22] - 1) * 100, (s.iloc[-1] / s.iloc[-64] - 1) * 100
+        g60 = (s.iloc[-1] / s.iloc[-60:].mean() - 1) * 100
+        rv = rsi(s).iloc[-1]
+        typ = None
+        if S['stage'] == '초기' and r1 > S['m1'] and r3 > S['m3']:
+            typ = 'A'
+        elif S['stage'] == '주도' and r1 < S['m1'] and r3 - S['m3'] > R['b_lag_floor'] and g60 > R['b_ma60_floor']:
+            typ = 'B'
+        if not typ:
+            continue
+        g = fl[fl['code'] == c].sort_values('date').tail(20)
+        fr = num(g['frgn']).sum() / 100 if len(g) >= 15 else np.nan
+        orr = num(g['orgn']).sum() / 100 if len(g) >= 15 else np.nan
+        f = fin.get(c, {})
+        ry, ryp = _yoy(f.get('rev'), f.get('rev_py')), _yoy(f.get('rev_prev'), f.get('rev_py_prev'))
+        op, opp = f.get('op', np.nan), f.get('op_py', np.nan)
+        cand.append({'code': c, 'name': last.loc[c, 'ISU_NM'], 'sector': sname, 'type': typ, 'close': s.iloc[-1],
+                     'r1': r1, 'r3': r3, 'rs1': r1 - S['m1'], 'rs3': r3 - S['m3'], 'g60': g60, 'rsi': rv, 'cap': cap,
+                     'stop': low[c].iloc[-1], 'fr': fr, 'or': orr, 'ry': ry, 'ryp': ryp, 'op': op, 'opp': opp,
+                     'period': f.get('period', ''), 'act': act.get(c, []), 'newin': h['name'] in newin})
+    ev = D.corp_events([x['code'] for x in cand], asof)
+    rows, watch, cut = [], [], []
+    for x in cand:
+        e = ev.get(x['code'], {'rights': [], 'supply': [], 'burn': [], 'prelim': []})
+        gate = []
+        if e['rights']:
+            gate.append(f"{e['rights'][0][0][4:6]}/{e['rights'][0][0][6:]} " + re.sub(r'^\[.*?\]', '', e['rights'][0][1]).replace('결정', '').strip())
+        if pd.notna(x['op']) and x['op'] < 0 and pd.notna(x['ry']) and x['ry'] < 0:
+            gate.append('영업적자·매출 감소')
+        if pd.notna(x['rsi']) and x['rsi'] >= R['rsi_hot']:
+            gate.append(f"과열(RSI {x['rsi']:.0f})")
+        if x['type'] == 'B' and pd.notna(x['fr']) and x['fr'] < 0 and x['or'] < 0:
+            gate.append('외국인·기관 동반 매도')
+        earn = pd.notna(x['ry']) and x['ry'] >= R['rev_yoy'] and pd.notna(x['ryp']) and x['ryp'] > 0 and pd.notna(x['op']) and x['op'] > 0 \
+            and (pd.isna(x['opp']) or x['opp'] <= 0 or x['op'] >= x['opp'])
+        why = []
+        if earn:
+            opt = '흑자전환' if pd.notna(x['opp']) and x['opp'] <= 0 else f"영업이익 {_yoy(x['op'], x['opp']):+.0f}%"
+            why.append(f"{x['period']} 매출 {x['ry']:+.0f}%(직전 분기 {x['ryp']:+.0f}%), {opt}")
+        if pd.notna(x['fr']) and x['fr'] + x['or'] > 0:
+            why.append(f"외국인·기관 20일 {x['fr'] + x['or']:+,.0f}억")
+        if x['act']:
+            why.append(('액티브 ETF 신규 편입' if x['newin'] else f"액티브 ETF {len(x['act'])}곳 보유"))
+        evs = (['공급계약'] if e['supply'] else []) + (['자사주 소각'] if e['burn'] else [])
+        if evs:
+            why.append('최근 30일 ' + '·'.join(evs) + ' 공시')
+        x.update({'gate': gate, 'earn': earn, 'why': why, 'score': len(why), 'prelim': e['prelim'][:1]})
+        if gate:
+            cut.append(x)
+        elif earn and x['score'] >= 2:
+            rows.append(x)
+        else:
+            watch.append(x)
+    key = lambda x: (-x['score'], -((x['fr'] if pd.notna(x['fr']) else 0) + (x['or'] if pd.notna(x['or']) else 0)) / x['cap'])
+    rows.sort(key=key); watch.sort(key=key)
+    n = R['n_max'][reg['regime']]
+    return {'rows': rows[:n], 'more': rows[n:], 'watch': watch[:6], 'cut': cut, 'n_max': n, 'n_cand': len(cand)}
+
+
 # ---------------------------------------------------------------- 그래프
 def chart_market(reg, asof):
     k = reg['kospi'][reg['kospi'].index <= asof].iloc[-260:]
@@ -708,6 +843,65 @@ def stage_tag(st):
     return f'<span class="tag {cls}">{st}</span>'
 
 
+def onepage(asof, reg, sec, fg, mf, pk, wat):
+    h = [f"<h1>오늘의 종목</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준 · 판단 기준은 검증 전 출발값</div>"]
+    k = reg['idx_rows'][0]
+    n = pk['n_max'] if pk else 0
+    act = {'위험선호': f'신규 매수 최대 {n}종목', '중립': f'신규 매수 최대 {n}종목, 목표 비중의 1/3씩',
+           '위험회피': f'신규 매수 최대 {n}종목, 목표 비중의 1/3만'}[reg['regime']]
+    fgs = f", 공포·탐욕 {fg['now']:.0f}" if not np.isnan(fg['now']) else ''
+    h.append(f"<div class=box><b>시장 {reg['regime']} → {act}</b><br><span class=note>코스피 {k['close']:,.0f}({fmt_pct(k['d1'])}), 200일선 대비 {fmt_pct(k['ma200'])}, 60일선 위 종목 {reg['breadth_last']:.0f}%{fgs}</span></div>")
+    ld = [x for x in sec if x['stage'] in ('주도', '초기')]
+    if ld:
+        h.append("<div style='margin:6px 0'><b>볼 섹터</b> " + ' · '.join(f"{x['name']}({x['stage']}, 3개월 코스피 대비 {x['rs3']:+.0f}%p)" for x in ld) + "</div>")
+    else:
+        h.append("<div><b>볼 섹터</b> 주도·초기 섹터 없음</div>")
+    tn = {'A': '초기 섹터의 주도주', 'B': '주도 섹터의 차기주자'}
+    if pk and pk['rows']:
+        h.append("<table><tr><th>종목</th><th>유형</th><th>근거</th><th class=r>손절선</th></tr>")
+        for x in pk['rows']:
+            stop = f"{x['stop']:,.0f}<br><span class=mut>{(x['stop'] / x['close'] - 1) * 100:+.1f}%</span>"
+            h.append(f"<tr><td style='white-space:nowrap'><b>{x['name']}</b><br><span class=mut>{x['sector']} · {x['close']:,.0f}원</span></td>"
+                     f"<td style='white-space:nowrap'>{tn[x['type']]}</td><td>{' / '.join(x['why'])}</td><td class=r>{stop}</td></tr>")
+        h.append("</table>")
+    else:
+        h.append("<div class=box>오늘은 기준을 모두 넘은 종목이 없습니다.</div>")
+    if pk and pk.get('watch'):
+        def lack(x):
+            m = []
+            if not x['earn']:
+                m.append('실적 확인 안 됨' if pd.isna(x['ry']) else '실적 상승세 아님')
+            if x['score'] < 2:
+                m.append('근거 부족')
+            return ', '.join(m)
+        h.append("<div style='margin-top:6px'><b>관찰</b> " + ' · '.join(f"{x['name']}({tn[x['type']][:2] if False else ('초기 주도' if x['type']=='A' else '차기주자')}, {lack(x)})" for x in pk['watch']) + "</div>")
+    if pk and pk.get('cut'):
+        h.append("<div class=note>탈락: " + ' · '.join(f"{x['name']}({x['gate'][0]})" for x in pk['cut'][:8]) + "</div>")
+    if pk and pk.get('rows'):
+        pre = [f"{x['name']} {x['prelim'][0][0][4:6]}/{x['prelim'][0][0][6:]}" for x in pk['rows'] if x['prelim']]
+        if pre:
+            h.append("<div class=note>최근 잠정실적 공시가 있어 원문 확인 필요: " + ', '.join(pre) + "</div>")
+    ch = []
+    if wat:
+        for e in wat['etfs']:
+            if e['base'] and e['new']:
+                ch.append(f"{e['name']} " + ('상위 30 진입' if e['capped'] else '신규 편입') + ': ' + ', '.join(n for n, w in e['new'][:4]))
+    fk = {(r['mkt'], r['who']): r for r in mf['mk']}.get(('코스피', '외국인'))
+    if fk:
+        ch.append(f"코스피 외국인 오늘 {fk['d1']:+,.0f}억, 20일 {fk['d20']:+,.0f}억")
+    if ch:
+        h.append("<div style='margin-top:6px'><b>오늘 달라진 점</b><br>" + '<br>'.join('· ' + c for c in ch[:3]) + "</div>")
+    R = PICK_RULE
+    h.append("<div class=box style='margin-top:10px;font-size:8.5pt'><b>고르는 순서</b><br>"
+             f"① 시장 국면으로 신규 매수 개수를 정한다(위험선호 {R['n_max']['위험선호']} / 중립 {R['n_max']['중립']} / 위험회피 {R['n_max']['위험회피']}).<br>"
+             "② 주도·초기 섹터 안에서만 고른다. 섹터는 산업지수·테마 ETF의 1·3·6개월 코스피 대비 수익률과 60·120일선 위치로 판정.<br>"
+             f"③ 유형: <b>초기 섹터의 주도주</b> = 섹터보다 1개월·3개월 모두 강한 종목 / <b>주도 섹터의 차기주자</b> = 섹터보다 1개월 덜 올랐지만 3개월 격차 {abs(R['b_lag_floor'])}%p 이내, 60일선 대비 {R['b_ma60_floor']}% 위(추세 유지).<br>"
+             f"④ 탈락: 최근 90일 유상증자·CB·BW 결정, 영업적자이면서 매출 감소, RSI {R['rsi_hot']} 이상, (차기주자) 외국인·기관 20일 동반 순매도. 시총 {R['min_cap']:,}억·하루 거래대금 {R['min_val']}억 미만 제외.<br>"
+             f"⑤ 추천: 실적 상승세(최근 분기 매출 전년비 +{R['rev_yoy']}% 이상, 직전 분기도 증가, 영업이익 흑자이고 줄지 않음, DART 정기보고서) 필수 + 수급·액티브 ETF·공시 근거 중 1개 이상. 근거 수, 시총 대비 수급 순.<br>"
+             "⑥ 손절선: 최근 20거래일 최저 종가. 종가로 깨면 정리. 진입은 목표 비중의 1/3부터, 추가는 20일 신고가 돌파 때만.</div>")
+    return h
+
+
 def build(asof):
     px = stock_panel()
     reg = market_regime(px, asof)
@@ -722,8 +916,10 @@ def build(asof):
     ev = dart_events(asof)
     bo = breakout(px, asof)
     cand = candidates(px, asof, sec, mem, wat, bo)
+    pk = picks(px, asof, sec, wat, reg)
     h = []
-    h.append(f"<h1>국내 시장 일일 점검</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준 · 예시판(검증 전 출발값 적용)</div>")
+    h += onepage(asof, reg, sec, fg, mf, pk, wat)
+    h.append(f"<h1 class=pb>부록 — 근거 데이터</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준</div>")
     # 요약
     lead = [s for s in sec if s['stage'] == '주도'][:4]
     early = [s for s in sec if s['stage'] == '초기'][:4]
