@@ -8,7 +8,7 @@ import pandas as pd
 
 WORK = os.environ.get('SIM_CACHE', '/tmp/sim_cache')
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-FOREIGN = r'골드만|Goldman|모건|Morgan|JP ?Morgan|제이피모간|블랙록|BlackRock|Black ?Rock|뱅가드|Vanguard|노르웨이|Norges|싱가포르|GIC|템플턴|Templeton|캐피탈 ?그룹|Capital (Group|Research|International)|피델리티|Fidelity|웰링턴|Wellington|UBS|씨티|Citi|크레디트|Credit Suisse|맥쿼리|Macquarie|라자드|Lazard|슈로더|Schroder|애버딘|Aberdeen|매튜스|Matthews|디멘셔널|Dimensional|스테이트 ?스트리트|State Street|인베스코|Invesco|노무라|Nomura|HSBC|알리안츠|Allianz|도이치|Deutsche|BNP|소시에테|Societe|메릴|Merrill|바클레이|Barclays|아부다비|Abu Dhabi|ADIA|카타르|Qatar|Wasatch|와사치|First State|퍼스트스테이트|Oppenheimer|오펜하이머|T\. ?Rowe|티로우|프랭클린|Franklin|Artisan|Baillie|베일리'
+FOREIGN = r'골드만|Goldman|모건|Morgan|JP ?Morgan|제이피모간|블랙록|BlackRock|Black ?Rock|뱅가드|Vanguard|노르웨이|Norges|싱가포르|GIC|템플턴|Templeton|캐피탈 ?그룹|Capital ?(Group|Research|International)|피델리티|Fidelity|웰링턴|Wellington|UBS|씨티|Citi|크레디트|Credit ?Suisse|맥쿼리|Macquarie|라자드|Lazard|슈로더|Schroder|애버딘|Aberdeen|매튜스|Matthews|디멘셔널|Dimensional|스테이트 ?스트리트|State Street|인베스코|Invesco|노무라|Nomura|HSBC|알리안츠|Allianz|도이치|Deutsche|BNP|소시에테|Societe|메릴|Merrill|바클레이|Barclays|아부다비|Abu ?Dhabi|ADIA|카타르|Qatar|Wasatch|와사치|First ?State|퍼스트스테이트|Oppenheimer|오펜하이머|T\. ?Rowe|티로우|프랭클린|Franklin|Artisan|Baillie|베일리'
 NPS = r'국민연금'
 
 
