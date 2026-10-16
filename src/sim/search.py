@@ -19,14 +19,15 @@ SPACE = {
     'b_lag': [-10, -15, -25], 'b_ma60': [-10, -5, 0],
     'rsi_hot': [None, 70, 75, 80], 'rights': [0, 90, 180], 'loss_gate': [True, False],
     'earn': ['off', 'strict', 'lenient'], 'rev': [0, 5, 10, 15, 20], 'accel': [False, True],
-    'cap': [300, 500, 700, 1000], 'rank': ['rs3', 'r1rel', 'ry', 'accel_d', 'mix', 'low_rsi', 'low_per', 'low_por', 'value_mom', 'mom12_1', 'hi52', 'opm_chg', 'roe'],
+    'cap': [300, 500, 700, 1000], 'rank': ['rs3', 'r1rel', 'ry', 'accel_d', 'mix', 'low_rsi', 'low_per', 'low_por', 'value_mom', 'mom12_1', 'hi52', 'opm_chg', 'roe', 'frgn20_cap', 'fo20_cap'],
     'n': ['5/6/7'],
     'value': [None, 'per<15', 'per<25', 'pbr<1.5', 'por<15', 'per_sec<0.5', 'pbr_sec<0.5', 'roe>10', 'debt<200', 'opm_up'],
     'trend': [None, 'mom12>0', 'hi52>-20', 'vol_low', 'val_surge'],
+    'flow': [None, 'frgn20>0', 'fo20>0', 'fo_buy_prsn_sell', 'frgn_streak5', 'frgn60>0', 'major_foreign'],
 }
 BASE = {'level': 'coarse', 'stages': ['주도', '초기'], 'types': ['A', 'B'], 'b_lag': -15, 'b_ma60': -5, 'rsi_hot': 75,
         'rights': 90, 'loss_gate': True, 'earn': 'strict', 'rev': 10, 'accel': False, 'cap': 700, 'rank': 'rs3', 'n': '5/6/7',
-        'value': None, 'trend': None}
+        'value': None, 'trend': None, 'flow': None}
 NMAP = {'5/6/7': {'위험회피': 5, '중립': 6, '위험선호': 7}}
 
 _P = {}
@@ -83,6 +84,12 @@ def filt(cfg):
     if tr and 'mom12_1' in d:
         m &= {'mom12>0': d['mom12_1'] > 0, 'hi52>-20': d['hi52'] > -20,
               'vol_low': d['vol60'] < d.groupby('date')['vol60'].transform('median'), 'val_surge': d['val_surge'] > 1.3}[tr]
+    fl = cfg.get('flow')
+    if fl and 'frgn20_cap' in d:
+        m &= {'frgn20>0': d['frgn20'] > 0, 'fo20>0': (d['frgn20'] > 0) & (d['orgn20'] > 0),
+              'fo_buy_prsn_sell': (d['frgn20'] > 0) & (d['orgn20'] > 0) & (d['prsn20'] < 0),
+              'frgn_streak5': d['frgn_streak'] >= 5, 'frgn60>0': d['frgn60'] > 0,
+              'major_foreign': d.get('major_foreign90', pd.Series(0, index=d.index)) > 0}[fl]
     return d[m]
 
 
@@ -97,6 +104,8 @@ def picks(cfg, c=None):
         c = c.assign(_k=-c[key[4:]].fillna(1e9))
     elif key == 'value_mom':
         c = c.assign(_k=(1 - c['per_secpct'].fillna(1)) + c.groupby('date')['rs3'].rank(pct=True))
+    elif key == 'fo20_cap':
+        c = c.assign(_k=(c.get('frgn20_cap', 0) + c.get('orgn20_cap', 0)))
     elif key not in c:
         c = c.assign(_k=0.0)
     else:
