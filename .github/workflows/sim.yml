@@ -29,6 +29,11 @@ jobs:
           python3 -m sim.panel coarse ksic3
           python3 -m sim.enrich
           python3 -m sim.enrich_flows || echo "수급 지표 생략"
+      - name: 진행 표시(판단 재료 완료)
+        run: |
+          git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
+          echo "run ${{ github.run_number }} 판단 재료 완료 $(TZ=Asia/Seoul date '+%F %H:%M')" > sim_state/status.txt
+          git add sim_state/status.txt && git commit -q -m "자동 탐색 진행 표시" && (git pull --rebase -q && git push) || true
       - name: 탐색(약 4시간)
         env:
           SIM_CACHE: /tmp/simcache
