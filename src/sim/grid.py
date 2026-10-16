@@ -19,6 +19,19 @@ def month_stats(d, rng):
     return m.mean(), np.percentile(boots, 2.5), np.percentile(boots, 97.5), len(m)
 
 
+def block_ci(m, rng, block=6, n=2000):
+    v = m.values
+    k = len(v)
+    if k < block * 2:
+        return np.nan, np.nan
+    starts = np.arange(k - block + 1)
+    out = []
+    for _ in range(n):
+        idx = np.concatenate([np.arange(s0, s0 + block) for s0 in rng.choice(starts, k // block + 1)])[:k]
+        out.append(v[idx].mean())
+    return np.percentile(out, 2.5), np.percentile(out, 97.5)
+
+
 def table(res, name, rng, a, b):
     rows = []
     for h, df in res.items():
@@ -26,7 +39,13 @@ def table(res, name, rng, a, b):
         r = {'설정': name, '기간': '3개월' if h == 63 else '6개월', '추천 수': len(d)}
         if len(d):
             mm, lo, hi, nm = month_stats(d, rng)
+            mser = d.groupby('date')['ex_univ'].mean() * 100
+            blo, bhi = block_ci(mser, rng, 6 if h == 126 else 3)
+            top = d.nlargest(5, 'ret').index
+            trim = d.drop(top).groupby('date')['ex_univ'].mean().mean() * 100
             r.update({'월 수': nm, '시장 평균 대비(월평균)': mm, '95% 구간': f'{lo:+.1f}~{hi:+.1f}',
+                      '95% 구간(기간 겹침 반영)': f'{blo:+.1f}~{bhi:+.1f}', '상위 5건 제외': trim,
+                      '중앙값(종목)': d['ex_univ'].median() * 100,
                       '시장 평균 이긴 비율': (d['ex_univ'] > 0).mean() * 100, '평균 수익률': d['ret'].mean() * 100,
                       '하위 10%': d['ret'].quantile(.1) * 100, '손절 비율': d['stopped'].mean() * 100})
             for k, (x, y) in SUBS.items():

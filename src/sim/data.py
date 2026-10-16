@@ -47,7 +47,9 @@ def prices(refresh=False):
     r = c / c.shift(1) - 1
     rs = s / s.shift(1)
     adj = c * rs / c.shift(1) - 1
-    split = ((rs - 1).abs() > 0.15) & (adj.abs() < 0.35)
+    # 분할·병합·무상증자로 보려면 주식수 변화와 반대 방향으로 가격이 실제로 움직였어야 한다.
+    # (가격 변동 없이 주식수만 늘어난 날 = 유상증자·합병·신주 상장 -> 보정하지 않고 실제 수익률 사용)
+    split = ((rs - 1).abs() > 0.15) & (adj.abs() < 0.35) & (r * (rs - 1) < 0) & (r.abs() > 0.1)
     r = r.where(~split, adj)
     lim = pd.Series(np.where(r.index < pd.Timestamp('2015-06-15'), 0.16, 0.31), index=r.index)
     bad = r.abs().gt(lim, axis=0) & ~split

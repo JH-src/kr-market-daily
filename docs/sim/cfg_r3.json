@@ -1,0 +1,6 @@
+{
+ "a 실적 통과 전부·손절 없음": {"n_max": null, "stop": false},
+ "f 섹터 대비 강도 순": {"stop": false, "rank": "rs3"},
+ "h 매출 증가율 순": {"rank": "ry", "stop": false},
+ "j 섹터 대비 강도 순 + 매출 가속": {"rank": "rs3", "stop": false, "accel": true}
+}
