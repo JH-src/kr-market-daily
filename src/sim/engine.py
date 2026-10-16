@@ -17,8 +17,9 @@ BASE = {
     'gate_rights_days': 90, 'gate_loss': True,
     'need_earn': True, 'rev_yoy': 10,
     'n_max': {'위험선호': 5, '중립': 3, '위험회피': 2},
-    'rank': 'rev_yoy',                           # 후보 순위: 매출 증가율
+    'rank': 'ry',                                # 후보 순위: 최근 분기 매출 증가율
     'stop': True,                                # 최근 20일 최저 종가 이탈 시 정리
+    'stop_pct': None,                            # 값이 있으면 진입가 대비 하락률 손절(예: 0.15)
     'cost': 0.005,                               # 왕복 비용(수수료·세금·충격) 0.5%
     'min_sector_n': 5,
 }
@@ -195,7 +196,7 @@ def score(C, i, picks, L, h):
         x = path.iloc[-1]
         stopped = False
         if L['stop']:
-            lv = C.low20[c].iloc[i]
+            lv = e * (1 - L['stop_pct']) if L.get('stop_pct') else C.low20[c].iloc[i]
             hit = path[path < lv]
             if len(hit):
                 x = hit.iloc[0]; stopped = True
