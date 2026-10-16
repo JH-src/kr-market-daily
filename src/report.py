@@ -32,6 +32,8 @@ def num(s):
 
 def load(name, cols=None):
     fs = sorted(glob.glob(os.path.join(DATA, name, '20*', '*.csv.gz')))
+    y0 = str(date.today().year - 2)   # 리포트는 최근 2~3년치만 읽는다(과거 전체는 시뮬레이션 전용)
+    fs = [f for f in fs if os.path.basename(f)[:4] >= y0]
     dfs = []
     for f in fs:
         d = pd.read_csv(f, dtype=str, keep_default_na=False)
@@ -902,6 +904,82 @@ def onepage(asof, reg, sec, fg, mf, pk, wat):
     return h
 
 
+# ---------------------------------------------------------------- 0'. 원페이지(시뮬레이션 검증 로직)
+SIM_LOGIC = {'name': '잠정 r3-a', 'n_by_regime': {'위험선호': 7, '중립': 6, '위험회피': 5},
+             'hist': '설계 구간(2016.6~2023) 같은 조건 통과 종목 전체: 시장 평균 대비 3개월 +1.9%p·6개월 +3.2%p(상위 5건 제외 +1.0/+1.9), 종목 중앙값은 마이너스, 이긴 비율 41~43%'}
+
+
+def sim_picks(asof):
+    from sim import engine as SE
+    C = SE.Ctx()
+    t = C.dates[C.dates <= asof].max()
+    i = C.dates.get_loc(t)
+    L = dict(SE.BASE); L.update({'n_max': None, 'stop': False})
+    cand, reg = SE.pick(C, i, L)
+    n = SIM_LOGIC['n_by_regime'][reg]
+    st = SE.sector_stage(C, i)
+    if cand.empty:
+        return {'rows': [], 'reg': reg, 'n': n, 'n_cand': 0, 'stages': st, 'asof': t}
+    cand = cand.sort_values('rs3', ascending=False)
+    fin = SE.fin_at(C, t)
+    P = C.P.iloc[:i + 1]
+    ff = sorted(glob.glob(os.path.join(DATA, 'kis', 'flows', '*.csv')))
+    fl = pd.concat([pd.read_csv(f, dtype=str) for f in ff]) if ff else pd.DataFrame(columns=['date', 'code', 'frgn', 'orgn'])
+    fl = fl[fl['date'] <= t.strftime('%Y%m%d')]
+    rows = []
+    for _, c in cand.head(n).iterrows():
+        f = fin.get(c['code'], {})
+        g = fl[fl['code'] == c['code']].sort_values('date').tail(20)
+        fo = (num(g['frgn']).sum() + num(g['orgn']).sum()) / 100 if len(g) >= 15 else np.nan
+        opg = '흑자전환' if pd.notna(f.get('opp')) and f['opp'] <= 0 else (f"영업이익 {(f['op'] / f['opp'] - 1) * 100:+.0f}%" if pd.notna(f.get('opp')) and f['opp'] > 0 else '')
+        why = [f"최근 분기 매출 {f.get('ry', np.nan):+.0f}%(직전 분기 {f.get('ryp', np.nan):+.0f}%), {opg}",
+               f"섹터 대비 3개월 {c['rs3']:+.0f}%p"]
+        if pd.notna(fo):
+            why.append(f"외국인·기관 20일 {fo:+,.0f}억")
+        rows.append({'name': C.W['name'].get(c['code'], c['code']), 'code': c['code'], 'sector': c['sector'],
+                     'stage': st.get(c['sector'], {}).get('stage', ''), 'type': c['type'], 'close': C.close[c['code']].iloc[i],
+                     'r1': (P[c['code']].iloc[-1] / P[c['code']].iloc[-22] - 1) * 100, 'why': why})
+    return {'rows': rows, 'reg': reg, 'n': n, 'n_cand': len(cand), 'stages': st, 'asof': t}
+
+
+def onepage2(asof, reg, fg, mf, sp, wat):
+    tn = {'A': '초기 섹터의 주도주', 'B': '주도 섹터의 차기주자', '-': ''}
+    h = [f"<h1>오늘의 종목</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준 · 로직 {SIM_LOGIC['name']}(검증 진행 중, 잠정)</div>"]
+    k = reg['idx_rows'][0]
+    fgs = f", 공포·탐욕 {fg['now']:.0f}" if not np.isnan(fg['now']) else ''
+    h.append(f"<div class=box><b>시장 {sp['reg']} → 신규 매수 최대 {sp['n']}종목</b><br><span class=note>코스피 {k['close']:,.0f}({fmt_pct(k['d1'])}), 200일선 대비 {fmt_pct(k['ma200'])}, 60일선 위 종목 {reg['breadth_last']:.0f}%{fgs}</span></div>")
+    ld = sorted([(s, v) for s, v in sp['stages'].items() if v['stage'] in ('주도', '초기') and s != '기타'], key=lambda x: x[1]['stage'])
+    h.append("<div style='margin:6px 0'><b>주도·초기 섹터</b> " + (' · '.join(f"{s}({v['stage']})" for s, v in ld) or '없음') + "</div>")
+    if sp['rows']:
+        h.append("<table><tr><th>종목</th><th>유형</th><th>근거</th><th class=r>1개월</th></tr>")
+        for x in sp['rows']:
+            h.append(f"<tr><td style='white-space:nowrap'><b>{x['name']}</b><br><span class=mut>{x['sector']}({x['stage']}) · {x['close']:,.0f}원</span></td>"
+                     f"<td style='white-space:nowrap'>{tn.get(x['type'], '')}</td><td>{' / '.join(x['why'])}</td><td class=r>{color_pct(x['r1'])}</td></tr>")
+        h.append("</table>")
+        h.append(f"<div class=note>조건을 모두 통과한 후보 {sp['n_cand']}개 중 섹터 대비 3개월 강도 상위 {len(sp['rows'])}개.</div>")
+    else:
+        h.append("<div class=box>오늘은 조건을 모두 통과한 종목이 없습니다.</div>")
+    ch = []
+    if wat:
+        for e in wat['etfs']:
+            if e['base'] and e['new']:
+                ch.append(f"{e['name']} " + ('상위 30 진입' if e['capped'] else '신규 편입') + ': ' + ', '.join(n for n, w in e['new'][:4]))
+    fk = {(r['mkt'], r['who']): r for r in mf['mk']}.get(('코스피', '외국인'))
+    if fk:
+        ch.append(f"코스피 외국인 오늘 {fk['d1']:+,.0f}억, 20일 {fk['d20']:+,.0f}억")
+    if ch:
+        h.append("<div style='margin-top:6px'><b>오늘 달라진 점</b><br>" + '<br>'.join('· ' + c for c in ch[:3]) + "</div>")
+    h.append("<div class=box style='margin-top:10px;font-size:8.5pt'><b>고르는 순서</b><br>"
+             "① 시장 국면(코스피 200일선·60일선 위 종목 비율·변동성지수)으로 개수: 위험선호 7 / 중립 6 / 위험회피 5<br>"
+             "② 섹터: 산업분류로 묶은 섹터 지수의 1·3·6개월 코스피 대비 수익률과 60·120일선 위치로 주도·초기 판정, 그 안에서만 고름<br>"
+             "③ 유형: 초기 섹터에서 섹터보다 1·3개월 모두 강한 종목(초기 주도주) / 주도 섹터에서 1개월 덜 올랐지만 3개월 격차 15%p 이내·60일선 -5% 위(차기주자)<br>"
+             "④ 탈락: RSI 75 이상, 90일 내 유상증자·CB·BW 결정, 영업적자이면서 매출 감소<br>"
+             "⑤ 실적 상승세 필수: 공시된 최근 분기 매출 전년비 +10% 이상·직전 분기도 증가·영업이익 흑자이고 줄지 않음(DART)<br>"
+             "⑥ 통과 종목을 섹터 대비 3개월 강도 순으로. 시가총액 상위 700·거래대금 상위 1000 안에서<br>"
+             f"<b>과거 시험</b>: {SIM_LOGIC['hist']}. 성과가 소수 종목에 기대는 구조라 종목별 비중은 고르게, 로직은 밤사이 계속 시험·갱신 중</div>")
+    return h
+
+
 def build(asof):
     px = stock_panel()
     reg = market_regime(px, asof)
@@ -918,7 +996,8 @@ def build(asof):
     cand = candidates(px, asof, sec, mem, wat, bo)
     pk = picks(px, asof, sec, wat, reg)
     h = []
-    h += onepage(asof, reg, sec, fg, mf, pk, wat)
+    sp = sim_picks(asof)
+    h += onepage2(asof, reg, fg, mf, sp, wat)
     h.append(f"<h1 class=pb>부록 — 근거 데이터</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준</div>")
     # 요약
     lead = [s for s in sec if s['stage'] == '주도'][:4]
