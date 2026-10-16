@@ -26,7 +26,7 @@ def main():
         c, m = line.strip().split(',')[:2]
         mk[c] = m
     tok = K.token()
-    today = time.strftime('%Y%m%d', time.gmtime(time.time() + 9 * 3600))
+    today = sys.argv[1] if len(sys.argv) > 1 else time.strftime('%Y%m%d', time.gmtime(time.time() + 9 * 3600))
 
     def one(c):
         for _ in range(3):
@@ -34,10 +34,18 @@ def main():
             r = K.call(tok, '/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', {'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': c})
             o = r.get('output') or {}
             if o.get('stck_prpr'):
-                px, sh = float(o['stck_prpr']), float(o.get('lstn_stcn') or 0)
-                return {'BAS_DD': today, 'ISU_CD': c, 'MKT_NM': mk.get(c, ''), 'TDD_CLSPRC': o['stck_prpr'], 'FLUC_RT': o.get('prdy_ctrt', ''),
-                        'TDD_OPNPRC': o.get('stck_oprc', ''), 'TDD_HGPRC': o.get('stck_hgpr', ''), 'TDD_LWPRC': o.get('stck_lwpr', ''),
-                        'ACC_TRDVOL': o.get('acml_vol', ''), 'ACC_TRDVAL': o.get('acml_tr_pbmn', ''), 'MKTCAP': f'{px * sh:.0f}', 'LIST_SHRS': o.get('lstn_stcn', '')}
+                # 현재가는 장 마감 뒤 시간외 단일가로 바뀌므로, 종가는 일봉(정규장 종가)에서 따로 받는다
+                throttle()
+                d = K.call(tok, '/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice', 'FHKST03010100',
+                           {'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': c, 'FID_INPUT_DATE_1': today, 'FID_INPUT_DATE_2': today,
+                            'FID_PERIOD_DIV_CODE': 'D', 'FID_ORG_ADJ_PRC': '1'})
+                bar = next((x for x in (d.get('output2') or []) if x.get('stck_bsop_date') == today), None)
+                if not bar:
+                    return None
+                px, sh = float(bar['stck_clpr']), float(o.get('lstn_stcn') or 0)
+                return {'BAS_DD': today, 'ISU_CD': c, 'MKT_NM': mk.get(c, ''), 'TDD_CLSPRC': bar['stck_clpr'], 'FLUC_RT': bar.get('prdy_ctrt', o.get('prdy_ctrt', '')),
+                        'TDD_OPNPRC': bar.get('stck_oprc', ''), 'TDD_HGPRC': bar.get('stck_hgpr', ''), 'TDD_LWPRC': bar.get('stck_lwpr', ''),
+                        'ACC_TRDVOL': bar.get('acml_vol', ''), 'ACC_TRDVAL': bar.get('acml_tr_pbmn', ''), 'MKTCAP': f'{px * sh:.0f}', 'LIST_SHRS': o.get('lstn_stcn', '')}
             time.sleep(1)
         return None
 
