@@ -143,6 +143,7 @@ def pick(C, i, L):
     ev = C.ev[(C.ev['dt'] <= t) & (C.ev['dt'] > t - pd.Timedelta(days=L['gate_rights_days'])) & (C.ev['kind'] == 'rights')]
     rights = set(ev['stock_code'])
     rows = []
+    rsi_row = C.rsi.iloc[i]
     for c in uni:
         s = C.sec.get(c)
         if s not in st or st[s]['stage'] not in L['stages']:
@@ -155,7 +156,9 @@ def pick(C, i, L):
             typ = 'B'
         if L['types'] and typ not in L['types']:
             continue
-        if L['rsi_hot'] and C.rsi.iloc[i][c] >= L['rsi_hot']:
+        if not L['types']:
+            typ = typ or '-'
+        if L['rsi_hot'] and rsi_row[c] >= L['rsi_hot']:
             continue
         if c in rights and L['gate_rights_days']:
             continue
