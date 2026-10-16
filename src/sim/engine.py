@@ -180,6 +180,23 @@ def pick(C, i, L):
     return df.head(n), reg
 
 
+def ubase(C, i, h, L):
+    """같은 날 유니버스(시총·거래대금 조건) 전 종목을 같은 비중으로 샀을 때의 수익률(비교 기준)."""
+    key = (i, h, L['cap_rank'], L['val_rank'])
+    if not hasattr(C, '_ub'):
+        C._ub = {}
+    if key not in C._ub:
+        cap = C.W['cap'].iloc[i]
+        ok = cap.notna() & C.close.iloc[i].notna()
+        cr = cap[ok].rank(ascending=False)
+        vr = C.val20.iloc[i][ok].rank(ascending=False)
+        uni = cr.index[(cr <= L['cap_rank']) & (vr.reindex(cr.index) <= L['val_rank'])]
+        a, b = i + 1, i + 1 + h
+        r = C.P[uni].iloc[b] / C.P[uni].iloc[a] - 1
+        C._ub[key] = r.mean() - L['cost']
+    return C._ub[key]
+
+
 def score(C, i, picks, L, h):
     """i일 신호 -> i+1 종가 매수 -> i+1+h 종가 매도(손절 시 그 날 종가)."""
     a, b = i + 1, i + 1 + h
@@ -203,7 +220,7 @@ def score(C, i, picks, L, h):
         ret = x / e - 1 - L['cost']
         sret = C.secidx[p['sector']].iloc[b] / C.secidx[p['sector']].iloc[a] - 1 if p['sector'] in C.secidx else np.nan
         out.append({'date': C.dates[i], 'code': c, 'sector': p['sector'], 'type': p['type'], 'ret': ret,
-                    'ex_kospi': ret - kret, 'ex_sector': ret - sret, 'stopped': stopped})
+                    'ex_kospi': ret - kret, 'ex_sector': ret - sret, 'ex_univ': ret - ub, 'stopped': stopped})
     return out
 
 
@@ -236,7 +253,8 @@ def summary(res, regs, label):
                 continue
             rows.append({'logic': label, 'h': '3개월' if h == 63 else '6개월', '구간': per, '추천 수': len(d),
                          '평균 수익률': d['ret'].mean() * 100, '코스피 대비': d['ex_kospi'].mean() * 100,
-                         '섹터 대비': d['ex_sector'].mean() * 100, '코스피 이긴 비율': (d['ex_kospi'] > 0).mean() * 100,
+                         '섹터 대비': d['ex_sector'].mean() * 100, '시장 평균 대비': d['ex_univ'].mean() * 100,
+                         '시장 평균 이긴 비율': (d['ex_univ'] > 0).mean() * 100, '코스피 이긴 비율': (d['ex_kospi'] > 0).mean() * 100,
                          '수익 비율': (d['ret'] > 0).mean() * 100, '하위 10%': d['ret'].quantile(0.1) * 100,
                          '손절 비율': d['stopped'].mean() * 100})
     return pd.DataFrame(rows)
