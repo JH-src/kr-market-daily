@@ -50,8 +50,8 @@ def empty_days():
     return set(open(p).read().split()) if os.path.exists(p) else set()
 
 
-def consolidate(y):
-    for s in SETS:
+def consolidate(y, sets=None):
+    for s in (sets or SETS):
         fs = sorted(glob.glob(os.path.join(C.DATA, s, str(y), f'{y}*.csv.gz')))
         if not fs:
             continue
@@ -109,7 +109,7 @@ def run(y0, y1, budget, sets):
         if time.time() - t0 > budget:
             print('예산 소진, 멈춤', y, flush=True)
             return False
-        consolidate(y)
+        consolidate(y, sets)
         with open(LOG, 'a') as fh:
             fh.write(f'{y} done {time.strftime("%Y-%m-%d %H:%M")}\n')
         print(y, '완료·보관', flush=True)
