@@ -245,6 +245,40 @@ def sector_table(asof, kospi):
     return sorted(rows, key=lambda x: (order[x['stage']], -x['rs3']))
 
 
+def sector_members(px, asof, sec):
+    """섹터 ETF 구성종목(한투 API)으로 섹터별 대표 종목과, 섹터보다 1개월 덜 오른 종목을 뽑는다."""
+    fs = sorted(glob.glob(os.path.join(DATA, 'kis', 'holdings', '*.csv')))
+    if not fs:
+        return {}, None
+    hd = pd.read_csv(fs[-1], dtype=str)
+    hd['w'] = num(hd['weight'])
+    p = px[px['BAS_DD'] <= asof]
+    days = sorted(p['BAS_DD'].unique())
+    if len(days) < 22:
+        return {}, None
+    a, b = days[-1], days[-22]
+    c1 = p[p['BAS_DD'] == a].set_index('ISU_CD')
+    c0 = p[p['BAS_DD'] == b].set_index('ISU_CD')
+    ret = (c1['TDD_CLSPRC'] / c0['TDD_CLSPRC'].reindex(c1.index) - 1) * 100
+    # 1개월 안에 상장주식수가 3% 넘게 바뀐 종목(분할·병합·증자 등)은 시세가 수정주가가 아니라 수익률을 쓰지 않는다(소각 등 소폭 변동은 유지)
+    chg = (c1['LIST_SHRS'] / c0['LIST_SHRS'].reindex(c1.index) - 1).abs() > 0.03
+    ret[chg] = np.nan
+    m1 = {s_['name']: s_['m1'] for s_ in sec}
+    out = {}
+    for name, g in hd.groupby('sector'):
+        g = g[g['code'].isin(c1.index)].sort_values('w', ascending=False)
+        if g.empty:
+            continue
+        g = g.assign(r=g['code'].map(ret), cap=g['code'].map(c1['MKTCAP']) / 1e8)
+        top = [(x['name'], x['w'], x['r']) for _, x in g.head(3).iterrows()]
+        base = m1.get(name, np.nan)
+        lag = g.iloc[3:15]
+        lag = lag[(lag['cap'] >= 5000) & lag['r'].notna() & (lag['r'] < base)] if not np.isnan(base) else lag.iloc[0:0]
+        lag = [(x['name'], x['w'], x['r']) for _, x in lag.head(3).iterrows()]
+        out[name] = {'etf': g['etf'].iloc[0], 'top': top, 'lag': lag, 'n': len(g)}
+    return out, os.path.basename(fs[-1])[:8]
+
+
 # ---------------------------------------------------------------- 3. 수출
 def exports():
     p = os.path.join(DATA, 'customs', 'export10d.csv')
@@ -451,6 +485,7 @@ def build(asof):
     reg = market_regime(px, asof)
     mac, glo = macro(asof)
     sec = sector_table(asof, reg['kospi'])
+    mem, mem_day = sector_members(px, asof, sec)
     ex = exports()
     ev = dart_events(asof)
     bo = breakout(px, asof)
@@ -501,6 +536,22 @@ def build(asof):
                  f"<td class=r>{color_pct(s['rs3'])}</td><td class=r>{color_pct(s['rs6'])}</td><td class=r>{color_pct(s['g60'])}</td><td class=r>{u}</td></tr>")
     h.append("</table>")
     h.append(f"<img src='{chart_sectors(sec)}'>")
+    h.append("<h3>섹터별 종목</h3>")
+    if mem:
+        h.append("<table><tr><th>섹터</th><th>대표 종목(ETF 비중 상위)</th><th>섹터보다 덜 오른 종목(1개월)</th></tr>")
+        for s in sec:
+            m = mem.get(s['name'])
+            if not m:
+                h.append(f"<tr><td style='white-space:nowrap'>{s['name']}</td><td colspan=2 class=mut>추종 ETF가 없어 구성종목 확인 불가</td></tr>")
+                continue
+            top = ', '.join(f"{n} {w:.0f}%" + (f"({fmt_pct(r)})" if not np.isnan(r) else '') for n, w, r in m['top'])
+            lag = ', '.join(f"{n}({fmt_pct(r)})" for n, w, r in m['lag']) or '<span class=mut>해당 없음</span>'
+            h.append(f"<tr><td style='white-space:nowrap'>{s['name']}</td><td>{top}</td><td>{lag}</td></tr>")
+        h.append("</table>")
+        h.append(f"<div class=note>구성종목은 각 섹터 ETF의 편입 내역({mem_day[4:6]}/{mem_day[6:]} 한국투자증권 조회), 괄호는 최근 1개월 주가 등락입니다. "
+                 "'덜 오른 종목'은 비중 4~15위 중 시가총액 5천억 원 이상이면서 섹터보다 1개월 덜 오른 종목으로, 가격만 본 후보이고 공시 점검은 아직 거치지 않았습니다.</div>")
+    else:
+        h.append("<div class=note>섹터 구성종목: 확인 불가(한투 수집 전)</div>")
     h.append("<div class=note>산업 섹터는 KRX 산업지수, 조선·방산·2차전지·전력기기·소부장은 순자산이 가장 큰 국내 테마 ETF의 순자산가치로 계산했습니다. 이번 예시판의 단계는 가격 축만 반영했고, 변화 축(수출·잠정실적·공급계약)과 섹터 내 확산도는 섹터 분류표 확정 후 붙입니다.</div>")
 
     # 3. 수출
