@@ -1,0 +1,65 @@
+{
+ "output1": {
+  "ovrs_nmix_prdy_vrss": "-103.16",
+  "prdy_vrss_sign": "5",
+  "prdy_ctrt": "-0.88",
+  "ovrs_nmix_prdy_clpr": "11684.38",
+  "acml_vol": "0",
+  "hts_kor_isnm": "필라델피아 반도체지수",
+  "ovrs_nmix_prpr": "11581.22",
+  "stck_shrn_iscd": "SOX",
+  "ovrs_prod_oprc": "11280.89",
+  "ovrs_prod_hgpr": "11620.14",
+  "ovrs_prod_lwpr": "11171.53"
+ },
+ "output2": [
+  {
+   "stck_bsop_date": "20261015",
+   "ovrs_nmix_prpr": "11581.22",
+   "ovrs_nmix_oprc": "11280.89",
+   "ovrs_nmix_hgpr": "11620.14",
+   "ovrs_nmix_lwpr": "11171.53",
+   "acml_vol": "0",
+   "mod_yn": "N"
+  },
+  {
+   "stck_bsop_date": "20261014",
+   "ovrs_nmix_prpr": "11684.38",
+   "ovrs_nmix_oprc": "11960.04",
+   "ovrs_nmix_hgpr": "12022.21",
+   "ovrs_nmix_lwpr": "11638.92",
+   "acml_vol": "0",
+   "mod_yn": "N"
+  },
+  {
+   "stck_bsop_date": "20261013",
+   "ovrs_nmix_prpr": "12208.80",
+   "ovrs_nmix_oprc": "11959.26",
+   "ovrs_nmix_hgpr": "12217.21",
+   "ovrs_nmix_lwpr": "11861.28",
+   "acml_vol": "0",
+   "mod_yn": "N"
+  },
+  {
+   "stck_bsop_date": "20261012",
+   "ovrs_nmix_prpr": "12236.79",
+   "ovrs_nmix_oprc": "12361.24",
+   "ovrs_nmix_hgpr": "12378.31",
+   "ovrs_nmix_lwpr": "12216.45",
+   "acml_vol": "0",
+   "mod_yn": "N"
+  },
+  {
+   "stck_bsop_date": "20261009",
+   "ovrs_nmix_prpr": "12572.42",
+   "ovrs_nmix_oprc": "12796.00",
+   "ovrs_nmix_hgpr": "12826.67",
+   "ovrs_nmix_lwpr": "12507.88",
+   "acml_vol": "0",
+   "mod_yn": "N"
+  }
+ ],
+ "rt_cd": "0",
+ "msg_cd": "MCA00000",
+ "msg1": "정상처리 되었습니다."
+}

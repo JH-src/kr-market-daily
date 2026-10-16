@@ -1,0 +1,49 @@
+{
+ "ctx_area_nk": "20261024            ",
+ "ctx_area_fk": "20261001            ",
+ "output": [
+  {
+   "bass_dt": "20261001",
+   "wday_dvsn_cd": "05",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20261002",
+   "wday_dvsn_cd": "06",
+   "bzdy_yn": "Y",
+   "tr_day_yn": "Y",
+   "opnd_yn": "Y",
+   "sttl_day_yn": "Y"
+  },
+  {
+   "bass_dt": "20261003",
+   "wday_dvsn_cd": "07",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20261004",
+   "wday_dvsn_cd": "01",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  },
+  {
+   "bass_dt": "20261005",
+   "wday_dvsn_cd": "02",
+   "bzdy_yn": "N",
+   "tr_day_yn": "Y",
+   "opnd_yn": "N",
+   "sttl_day_yn": "N"
+  }
+ ],
+ "rt_cd": "0",
+ "msg_cd": "KIOK0500",
+ "msg1": "조회가 계속됩니다..다음버튼을 Click 하십시오.                                   "
+}

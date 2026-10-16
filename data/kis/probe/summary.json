@@ -1,1 +1,174 @@
-{"token":"Secrets 미설정"}
+{
+ "token": "성공",
+ "종목_투자자_최근": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 30
+  },
+  "http_error": null
+ },
+ "종목_투자자_일별_과거": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 30
+  },
+  "http_error": null
+ },
+ "종목_투자자_일별_최근": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 30
+  },
+  "http_error": null
+ },
+ "시장_투자자_일별": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 300
+  },
+  "http_error": null
+ },
+ "시장_투자자_일별_과거": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 300
+  },
+  "http_error": null
+ },
+ "외인기관_순매수_상위": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 30
+  },
+  "http_error": null
+ },
+ "프로그램매매_일별": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 29
+  },
+  "http_error": null
+ },
+ "공매도_일별": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 29
+  },
+  "http_error": null
+ },
+ "신용잔고_일별": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 30
+  },
+  "http_error": null
+ },
+ "대차_일별": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 29
+  },
+  "http_error": null
+ },
+ "증시자금_예탁금": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 100
+  },
+  "http_error": null
+ },
+ "금리_종합": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 7,
+   "output2": 18
+  },
+  "http_error": null
+ },
+ "수정주가_일봉": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 100
+  },
+  "http_error": null
+ },
+ "추정실적_컨센서스": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 6,
+   "output3": 8,
+   "output4": 5
+  },
+  "http_error": null
+ },
+ "증권사_투자의견": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 15
+  },
+  "http_error": null
+ },
+ "뉴스_제목": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output": 40
+  },
+  "http_error": null
+ },
+ "휴장일": {
+  "rt_cd": "0",
+  "msg": "조회가 계속됩니다..다음버튼을 Click 하십시오.                                   ",
+  "rows": {
+   "output": 24
+  },
+  "http_error": null
+ },
+ "ETF_구성종목": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 21
+  },
+  "http_error": null
+ },
+ "해외지수_일봉": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 29
+  },
+  "http_error": null
+ },
+ "업종지수_일봉": {
+  "rt_cd": "0",
+  "msg": "정상처리 되었습니다.",
+  "rows": {
+   "output1": 1,
+   "output2": 29
+  },
+  "http_error": null
+ }
+}
