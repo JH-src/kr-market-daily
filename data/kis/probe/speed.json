@@ -1,0 +1,35 @@
+{
+ "calls": 400,
+ "ok": 400,
+ "errors": 0,
+ "seconds": 259.6,
+ "per_call": 0.649,
+ "est_all_minutes": 29.1,
+ "n_codes": 2694,
+ "sample": {
+  "stck_prpr": "5540",
+  "prdy_ctrt": "2.78",
+  "acml_vol": "225936",
+  "acml_tr_pbmn": "1249818050",
+  "hts_avls": "1547",
+  "lstn_stcn": "27931470",
+  "per": "17.81",
+  "pbr": "0.40",
+  "bstp_kor_isnm": "제약"
+ },
+ "index": {
+  "코스피": {
+   "bstp_nmix_prpr": "5668.05",
+   "bstp_nmix_prdy_ctrt": "2.05"
+  },
+  "코스닥": {
+   "bstp_nmix_prpr": "794.78",
+   "bstp_nmix_prdy_ctrt": "4.46"
+  },
+  "VKOSPI": {
+   "bstp_nmix_prpr": "2326.22",
+   "bstp_nmix_prdy_ctrt": "1.92"
+  }
+ },
+ "run_at_kst": "2026-10-16 22:34"
+}
