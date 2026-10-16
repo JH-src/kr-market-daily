@@ -134,3 +134,29 @@ def events():
     d = pd.read_csv(p, dtype=str)
     d['dt'] = pd.to_datetime(d['rcept_dt'])
     return d
+
+
+def fin_ext():
+    """분기 순이익(3개월, 4분기는 연간-1~3분기), 분기 말 자본·부채와 공시일."""
+    rows = []
+    for f in glob.glob(os.path.join(DATA, 'dart', 'fin_ext', '*.csv')):
+        y, rc = os.path.basename(f)[:-4].split('_')
+        d = pd.read_csv(f, dtype={'stock_code': str, 'rcept_no': str})
+        d['y'], d['q'] = int(y), {'11013': 1, '11012': 2, '11014': 3, '11011': 4}[rc]
+        rows.append(d)
+    if not rows:
+        return pd.DataFrame()
+    f = pd.concat(rows, ignore_index=True)
+    f['avail'] = pd.to_datetime(f['rcept_no'].str[:8], errors='coerce')
+    q = f[f['q'] < 4].set_index(['stock_code', 'y', 'q'])['ni']
+    a = f[f['q'] == 4].copy()
+    def q4(r):
+        try:
+            p = q.loc[[(r['stock_code'], r['y'], k) for k in (1, 2, 3)]]
+        except KeyError:
+            return np.nan
+        return r['ni'] - p.sum() if len(p) == 3 and p.notna().all() and pd.notna(r['ni']) else np.nan
+    a['ni'] = a.apply(q4, axis=1) if len(a) else np.nan
+    out = pd.concat([f[f['q'] < 4], a], ignore_index=True)
+    out['ord'] = out['y'] * 4 + out['q']
+    return out.dropna(subset=['avail']).sort_values(['stock_code', 'ord'])

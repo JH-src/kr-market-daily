@@ -62,6 +62,10 @@ class Ctx:
         except Exception:
             self.fin = pd.DataFrame()
         try:
+            self.fx = Dm.fin_ext()
+        except Exception:
+            self.fx = pd.DataFrame()
+        try:
             self.ev = Dm.events()
         except Exception:
             self.ev = pd.DataFrame(columns=['dt', 'stock_code', 'kind'])
@@ -128,6 +132,23 @@ def fin_at(C, t):
     return out
 
 
+def value_at(C, t):
+    """t 시점 공시 기준: 최근 4개 분기 순이익 합, 최근 자본·부채."""
+    f = C.fx
+    if f.empty:
+        return {}
+    g = f[f['avail'] <= t].groupby('stock_code').tail(4)
+    out = {}
+    for sc, h in g.groupby('stock_code'):
+        h = h.sort_values('ord')
+        a = h.iloc[-1]
+        if (t - a['avail']).days > 200:
+            continue
+        ttm = h['ni'].sum() if len(h) == 4 and h['ord'].iloc[-1] - h['ord'].iloc[0] == 3 and h['ni'].notna().all() else np.nan
+        out[sc] = {'ttm': ttm, 'eq': a['eq'], 'debt': a['debt']}
+    return out
+
+
 def pick(C, i, L):
     t = C.dates[i]
     cap = C.W['cap'].iloc[i]
@@ -142,6 +163,9 @@ def pick(C, i, L):
     r3 = (P.iloc[-1] / P.iloc[-64] - 1) * 100
     g60 = (P.iloc[-1] / P.iloc[-60:].mean() - 1) * 100
     fin = fin_at(C, t) if L['need_earn'] or L['gate_loss'] else {}
+    use_val = L.get('per_max') or L.get('pbr_max') or L.get('debt_max') or L['rank'] in ('per', 'pbr')
+    val = value_at(C, t) if use_val else {}
+    capr = C.W['cap'].iloc[i]
     ev = C.ev[(C.ev['dt'] <= t) & (C.ev['dt'] > t - pd.Timedelta(days=L['gate_rights_days'])) & (C.ev['kind'] == 'rights')]
     rights = set(ev['stock_code'])
     rows = []
@@ -173,7 +197,18 @@ def pick(C, i, L):
             continue
         if L.get('accel') and not (pd.notna(f.get('ry')) and pd.notna(f.get('ryp')) and f['ry'] > f['ryp']):
             continue   # 매출 증가율 가속(최근 분기 > 직전 분기)
-        rows.append({'code': c, 'sector': s, 'type': typ, 'ry': f.get('ry', np.nan), 'rs3': r3[c] - S['m3']})
+        v = val.get(c, {})
+        per = capr[c] / v['ttm'] if v and pd.notna(v.get('ttm')) and v['ttm'] > 0 else np.nan
+        pbr = capr[c] / v['eq'] if v and pd.notna(v.get('eq')) and v['eq'] > 0 else np.nan
+        dr = v['debt'] / v['eq'] * 100 if v and pd.notna(v.get('debt')) and pd.notna(v.get('eq')) and v['eq'] > 0 else np.nan
+        if L.get('per_max') and not (pd.notna(per) and per <= L['per_max']):
+            continue
+        if L.get('pbr_max') and not (pd.notna(pbr) and pbr <= L['pbr_max']):
+            continue
+        if L.get('debt_max') and pd.notna(dr) and dr > L['debt_max']:
+            continue
+        rows.append({'code': c, 'sector': s, 'type': typ, 'ry': f.get('ry', np.nan), 'rs3': r3[c] - S['m3'],
+                     'per': -per if pd.notna(per) else np.nan, 'pbr': -pbr if pd.notna(pbr) else np.nan})
     df = pd.DataFrame(rows)
     if df.empty:
         return df, reg

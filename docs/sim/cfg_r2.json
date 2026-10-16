@@ -1,0 +1,5 @@
+{
+ "h 기존 순위(매출 증가율)·손절 없음": {"rank": "ry", "stop": false},
+ "i 섹터 대비 강도 순 + -15% 손절": {"rank": "rs3", "stop": true, "stop_pct": 0.15},
+ "j 섹터 대비 강도 순 + 매출 가속": {"rank": "rs3", "stop": false, "accel": true}
+}
