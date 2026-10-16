@@ -26,7 +26,7 @@ jobs:
           mkdir -p /tmp/simcache
           cd src
           python3 -c "from sim import data as D; D.prices(refresh=True)"
-          python3 -m sim.panel coarse ksic3
+          python3 -m sim.panel coarse ksic3 theme
           python3 -m sim.enrich
           python3 -m sim.enrich_flows || echo "수급 지표 생략"
       - name: 진행 표시(판단 재료 완료)

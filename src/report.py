@@ -911,7 +911,7 @@ SIM_LOGIC = {'name': '잠정 r3-a', 'n_by_regime': {'위험선호': 7, '중립':
 
 def sim_picks(asof):
     from sim import engine as SE
-    C = SE.Ctx()
+    C = SE.Ctx('theme')
     t = C.dates[C.dates <= asof].max()
     i = C.dates.get_loc(t)
     L = dict(SE.BASE); L.update({'n_max': None, 'stop': False})

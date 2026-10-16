@@ -13,7 +13,7 @@ COST = 0.005
 D0, D1 = pd.Timestamp('2016-06-01'), pd.Timestamp('2023-12-31')
 
 SPACE = {
-    'level': ['coarse', 'ksic3'],
+    'level': ['coarse', 'ksic3', 'theme'],
     'stages': [['주도', '초기'], ['주도'], ['초기'], ['주도', '초기', '중립'], 'all'],
     'types': [[], ['A'], ['B'], ['A', 'B']],
     'b_lag': [-10, -15, -25], 'b_ma60': [-10, -5, 0],

@@ -78,7 +78,7 @@ def build(level, start='2011-01-01'):
 if __name__ == '__main__':
     work = os.environ.get('SIM_CACHE', '/tmp/sim_cache')
     out = {}
-    for level in (sys.argv[1:] or ['coarse', 'ksic3']):
+    for level in (sys.argv[1:] or ['coarse', 'ksic3', 'theme']):
         out[level] = build(level)
         pickle.dump(out[level], open(os.path.join(work, f'panel_{level}.pkl'), 'wb'))
         print(level, out[level].shape, flush=True)
