@@ -90,15 +90,22 @@ def series_from(name, key_col, key, val_col, date_col='BAS_DD', extra=None):
     return s[~s.index.duplicated()].dropna()
 
 
-def fut_front(prod):
-    """정규시장 기준 거래량 최대 월물의 종가 연결 시계열."""
+def fut_front(prod, asof=None):
+    """정규시장에서 기준일 거래량이 가장 많은 월물(스프레드 제외)을 고르고, 그 월물 하나의 종가 시계열을 돌려준다.
+    월물을 섞지 않아 만기 교체로 인한 가격 점프가 없다."""
     df = load('fut', ['BAS_DD', 'PROD_NM', 'MKT_NM', 'ISU_NM', 'TDD_CLSPRC', 'ACC_TRDVOL'])
     if df.empty:
         return pd.Series(dtype=float)
-    d = df[(df['PROD_NM'] == prod) & (df['MKT_NM'] == '정규')].copy()
+    d = df[(df['PROD_NM'] == prod) & (df['MKT_NM'] == '정규') & ~df['ISU_NM'].str.contains(' SP ')].copy()
     d['v'] = num(d['ACC_TRDVOL']); d['c'] = num(d['TDD_CLSPRC'])
     d = d.dropna(subset=['c'])
-    d = d.sort_values('v').groupby('BAS_DD').tail(1)
+    if asof is not None:
+        d = d[pd.to_datetime(d['BAS_DD']) <= asof]
+    last = d[d['BAS_DD'] == d['BAS_DD'].max()].sort_values('v')
+    if last.empty:
+        return pd.Series(dtype=float)
+    nm = last['ISU_NM'].iloc[-1]
+    d = d[d['ISU_NM'] == nm]
     return pd.Series(d['c'].values, index=pd.to_datetime(d['BAS_DD'])).sort_index()
 
 
@@ -122,7 +129,7 @@ def market_regime(px, asof):
     wide = wide[wide.index <= asof]
     ma60 = wide.rolling(60, min_periods=60).mean()
     above = (wide > ma60).where(ma60.notna())
-    breadth = above.sum(axis=1) / above.notna().sum(axis=1) * 100
+    breadth = above.sum(axis=1).astype(float) / above.notna().sum(axis=1).replace(0, np.nan).astype(float) * 100
     hi = wide.rolling(250, min_periods=240).max(); lo = wide.rolling(250, min_periods=240).min()
     nh = (wide >= hi).sum(axis=1); nl = (wide <= lo).where(lo.notna()).sum(axis=1)
     out['breadth'] = breadth.dropna()
@@ -162,7 +169,7 @@ def macro(asof):
                               ('10년국채 선물', '10년 국채선물', '가격↑ = 금리↓'),
                               ('미국달러 선물', '미국달러 선물(원/달러)', '가격↑ = 원화 약세'),
                               ('엔 선물', '엔 선물(원/100엔)', '')]:
-        s = fut_front(prod); s = s[s.index <= asof]
+        s = fut_front(prod, asof)
         if len(s) < 22:
             continue
         items.append({'label': label, 'last': s.iloc[-1], 'd1': (s.iloc[-1] / s.iloc[-2] - 1) * 100,
@@ -393,7 +400,7 @@ def chart_market(reg, asof):
 
 def chart_sectors(rows):
     r = sorted(rows, key=lambda x: x['rs3'])
-    fig, ax = plt.subplots(figsize=(7.2, 0.24 * len(r) + 0.6))
+    fig, ax = plt.subplots(figsize=(7.2, 0.17 * len(r) + 0.5))
     cols = [UP if x['rs3'] > 0 else DOWN for x in r]
     ax.barh([x['name'] for x in r], [x['rs3'] for x in r], color=cols, height=0.6)
     style_ax(ax); ax.grid(axis='x', color=GRID, linewidth=0.6); ax.grid(axis='y', visible=False)
@@ -486,7 +493,7 @@ def build(asof):
     h.append("</table><div class=note>해외 지수는 해당 ETF가 공시한 기초지수 등락이라 미국 장 마감 시점과 하루 차이가 날 수 있습니다.</div>")
 
     # 2. 섹터
-    h.append("<h2 class='pb'>2. 섹터 단계</h2>")
+    h.append("<h2>2. 섹터 단계</h2>")
     h.append("<table><tr><th>섹터</th><th>단계</th><th class=r>1개월</th><th class=r>3개월</th><th class=r>6개월</th><th class=r>3개월 초과</th><th class=r>6개월 초과</th><th class=r>60일선 대비</th><th class=r>ETF 좌수 20일</th></tr>")
     for s in sec:
         u = color_pct(s['units']) if s['units'] is not None else '<span class=mut>–</span>'
@@ -510,7 +517,7 @@ def build(asof):
     h.append(f"<img src='{chart_exports(ex)}'>")
 
     # 4. 공시
-    h.append(f"<h2 class='pb'>4. 공시 이벤트 ({ev['start']:%m/%d}~{ev['end']:%m/%d}, 유가·코스닥)</h2>")
+    h.append(f"<h2>4. 공시 이벤트 ({ev['start']:%m/%d}~{ev['end']:%m/%d}, 유가·코스닥)</h2>")
     h.append("<h3>단일판매·공급계약 (매출액 대비 비율 상위)</h3><table><tr><th>회사</th><th>접수일</th><th class=r>계약금액(억 원)</th><th class=r>매출액 대비</th></tr>")
     for r in ev['supply'][:12]:
         amt = '–' if np.isnan(r['amt']) else f"{r['amt']:,.0f}"
