@@ -1,0 +1,9 @@
+{
+ "a 실적 통과 전부·손절 없음": {"n_max": null, "stop": false},
+ "b a + 매출 증가율 20% 이상": {"n_max": null, "stop": false, "rev_yoy": 20},
+ "c a + 진입가 -15% 손절": {"n_max": null, "stop": true, "stop_pct": 0.15},
+ "d a + 초기 섹터의 주도주만": {"n_max": null, "stop": false, "types": ["A"]},
+ "e a + 매출 증가율 가속": {"n_max": null, "stop": false, "accel": true},
+ "f 국면별 개수 유지 + 섹터 대비 강도 순": {"stop": false, "rank": "rs3"},
+ "g 기존 최종(비교용)": {}
+}

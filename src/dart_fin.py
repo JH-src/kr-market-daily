@@ -129,3 +129,37 @@ def corp_events(codes, asof):
         out[sc] = e
         time.sleep(0.1)
     return out
+
+
+EXT = {('IS', '당기순이익(손실)'): 'ni', ('IS', '당기순이익'): 'ni', ('BS', '자본총계'): 'eq', ('BS', '부채총계'): 'debt'}
+
+
+def fetch_ext(year, rc, cmap, codes):
+    """밸류·재무 건전성용: 당기순이익(해당 분기 3개월), 자본총계·부채총계(분기 말) -> data/dart/fin_ext/"""
+    p = os.path.join(OUT, 'fin_ext', f'{year}_{rc}.csv')
+    if os.path.exists(p):
+        return p
+    key = os.environ['DART_KEY']
+    from concurrent.futures import ThreadPoolExecutor
+    need = [c for c in codes if c in cmap]
+    parts = [need[i:i + 100] for i in range(0, len(need), 100)]
+    get = lambda part: (part, _get(f"https://opendart.fss.or.kr/api/fnlttMultiAcnt.json?crtfc_key={key}&corp_code={','.join(cmap[c] for c in part)}&bsns_year={year}&reprt_code={rc}"))
+    with ThreadPoolExecutor(int(os.environ.get('DART_THREADS', '4'))) as ex:
+        results = list(ex.map(get, parts))
+    res = {}
+    for part, d in results:
+        for r in d.get('list', []):
+            k = EXT.get((r.get('sj_div'), (r.get('account_nm') or '').replace(' ', '')))
+            if not k:
+                continue
+            e = res.setdefault((r['stock_code'], r['fs_div']), {'stock_code': r['stock_code'], 'fs': r['fs_div'], 'rcept_no': r.get('rcept_no', '')})
+            e[k] = _num(r.get('thstrm_amount'))
+    best = {}
+    for (sc, fs), e in res.items():
+        if sc not in best or fs == 'CFS':
+            best[sc] = e
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, ['stock_code', 'fs', 'rcept_no', 'ni', 'eq', 'debt'], extrasaction='ignore')
+        w.writeheader(); w.writerows(best.values())
+    return p

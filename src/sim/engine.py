@@ -20,6 +20,7 @@ BASE = {
     'rank': 'ry',                                # 후보 순위: 최근 분기 매출 증가율
     'stop': True,                                # 최근 20일 최저 종가 이탈 시 정리
     'stop_pct': None,                            # 값이 있으면 진입가 대비 하락률 손절(예: 0.15)
+    'accel': False,                              # True면 매출 증가율 가속 종목만
     'cost': 0.005,                               # 왕복 비용(수수료·세금·충격) 0.5%
     'min_sector_n': 5,
 }
@@ -170,6 +171,8 @@ def pick(C, i, L):
             and pd.notna(f.get('op')) and f['op'] > 0 and (pd.isna(f.get('opp')) or f['opp'] <= 0 or f['op'] >= f['opp'])
         if L['need_earn'] and not earn:
             continue
+        if L.get('accel') and not (pd.notna(f.get('ry')) and pd.notna(f.get('ryp')) and f['ry'] > f['ryp']):
+            continue   # 매출 증가율 가속(최근 분기 > 직전 분기)
         rows.append({'code': c, 'sector': s, 'type': typ, 'ry': f.get('ry', np.nan), 'rs3': r3[c] - S['m3']})
     df = pd.DataFrame(rows)
     if df.empty:
