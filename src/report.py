@@ -998,7 +998,12 @@ def build(asof):
     h = []
     sp = sim_picks(asof)
     h += onepage2(asof, reg, fg, mf, sp, wat)
-    h.append(f"<h1 class=pb>부록 — 근거 데이터</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준</div>")
+    prov = os.path.join(DATA, '_calendar', 'provisional_kis.txt')
+    kis_day = os.path.exists(prov) and asof.strftime('%Y%m%d') in open(prov).read().split()
+    sub = f"{asof:%Y년 %m월 %d일} 장 마감 기준"
+    if kis_day:
+        sub += " · 종목 시세·코스피·코스닥은 한국투자증권 장 마감 자료, 섹터 ETF·선물·해외·변동성지수·옵션은 거래소 자료가 아직 없어 직전 거래일 값(다음 날 보강)"
+    h.append(f"<h1 class=pb>부록 — 근거 데이터</h1><div class='sub'>{sub}</div>")
     # 요약
     lead = [s for s in sec if s['stage'] == '주도'][:4]
     early = [s for s in sec if s['stage'] == '초기'][:4]
