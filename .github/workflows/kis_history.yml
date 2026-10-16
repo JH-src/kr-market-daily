@@ -21,7 +21,7 @@ jobs:
           KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
         run: |
-          n=$(grep -cvxFf archive/kis_flows/_done.txt config/universe_kis.txt 2>/dev/null || wc -l < config/universe_kis.txt)
+          n=$(python3 -c "import os;d=set(open('archive/kis_flows/_done.txt').read().split()) if os.path.exists('archive/kis_flows/_done.txt') else set();print(sum(1 for c in open('config/universe_kis.txt') if c.strip() and c.strip() not in d))")
           echo "남은 종목 $n"
           if [ "$n" -gt 0 ]; then cd src && timeout 18600 python3 kis_history.py 18000 || true; fi
       - name: 결과 저장
