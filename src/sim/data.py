@@ -87,9 +87,12 @@ SECTOR_KSIC = [  # (접두 코드, 섹터) — 가장 긴 접두가 우선
 ]
 
 
-def sectors():
+def sectors(level='coarse'):
     p = os.path.join(DATA, 'dart', 'industry.csv')
     d = pd.read_csv(p, dtype=str).dropna(subset=['induty_code'])
+    if level == 'ksic3':
+        # 산업분류 앞 3자리(소분류 수준, 예: 261 반도체·262 전자부품·2929 특수목적 기계 -> 292)로 잘게 나눔
+        return d.set_index('stock_code')['induty_code'].str[:3]
     rules = sorted(SECTOR_KSIC, key=lambda x: -len(x[0]))
     def m(code):
         for pre, sec in rules:

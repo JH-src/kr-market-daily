@@ -27,7 +27,7 @@ BASE = {
 
 
 class Ctx:
-    def __init__(self):
+    def __init__(self, sector_level='coarse'):
         W = Dm.prices()
         self.W = W
         self.P = W['adj']
@@ -35,7 +35,7 @@ class Ctx:
         self.dates = self.P.index
         self.kospi = Dm.index_series('idx_kospi', '코스피').reindex(self.dates).ffill()
         self.vk = Dm.index_series('idx_drv', '코스피 200 변동성지수').reindex(self.dates).ffill()
-        sec = Dm.sectors()
+        sec = Dm.sectors(sector_level)
         self.sec = sec.reindex(self.P.columns)
         r = W['ret'].fillna(0)
         capp = W['cap'].shift(1)
