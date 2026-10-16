@@ -19,11 +19,14 @@ SPACE = {
     'b_lag': [-10, -15, -25], 'b_ma60': [-10, -5, 0],
     'rsi_hot': [None, 70, 75, 80], 'rights': [0, 90, 180], 'loss_gate': [True, False],
     'earn': ['off', 'strict', 'lenient'], 'rev': [0, 5, 10, 15, 20], 'accel': [False, True],
-    'cap': [300, 500, 700, 1000], 'rank': ['rs3', 'r1rel', 'ry', 'accel_d', 'mix', 'low_rsi'],
+    'cap': [300, 500, 700, 1000], 'rank': ['rs3', 'r1rel', 'ry', 'accel_d', 'mix', 'low_rsi', 'low_per', 'low_por', 'value_mom', 'mom12_1', 'hi52', 'opm_chg', 'roe'],
     'n': ['5/6/7'],
+    'value': [None, 'per<15', 'per<25', 'pbr<1.5', 'por<15', 'per_sec<0.5', 'pbr_sec<0.5', 'roe>10', 'debt<200', 'opm_up'],
+    'trend': [None, 'mom12>0', 'hi52>-20', 'vol_low', 'val_surge'],
 }
 BASE = {'level': 'coarse', 'stages': ['주도', '초기'], 'types': ['A', 'B'], 'b_lag': -15, 'b_ma60': -5, 'rsi_hot': 75,
-        'rights': 90, 'loss_gate': True, 'earn': 'strict', 'rev': 10, 'accel': False, 'cap': 700, 'rank': 'rs3', 'n': '5/6/7'}
+        'rights': 90, 'loss_gate': True, 'earn': 'strict', 'rev': 10, 'accel': False, 'cap': 700, 'rank': 'rs3', 'n': '5/6/7',
+        'value': None, 'trend': None}
 NMAP = {'5/6/7': {'위험회피': 5, '중립': 6, '위험선호': 7}}
 
 _P = {}
@@ -31,7 +34,8 @@ _P = {}
 
 def panel(level):
     if level not in _P:
-        d = pickle.load(open(os.path.join(WORK, f'panel_{level}.pkl'), 'rb'))
+        px = os.path.join(WORK, f'panel_{level}_x.pkl')
+        d = pickle.load(open(px if os.path.exists(px) else os.path.join(WORK, f'panel_{level}.pkl'), 'rb'))
         d = d[(d['date'] >= D0 - pd.Timedelta(days=1)) & d['ret126'].notna()].copy()
         d['rs3'] = d['r3'] - d['sec_m3']; d['r1rel'] = d['r1'] - d['sec_m1']
         d['accel_d'] = d['ry'] - d['ryp']; d['low_rsi'] = -d['rsi']
@@ -70,6 +74,15 @@ def filt(cfg):
         m &= (d['ry'] >= cfg['rev']) & (d['op'] > 0)
     if cfg['accel']:
         m &= d['ry'] > d['ryp']
+    v = cfg.get('value')
+    if v and 'per' in d:
+        m &= {'per<15': d['per'] < 15, 'per<25': d['per'] < 25, 'pbr<1.5': d['pbr'] < 1.5, 'por<15': d['por'] < 15,
+              'per_sec<0.5': d['per_secpct'] < 0.5, 'pbr_sec<0.5': d['pbr_secpct'] < 0.5, 'roe>10': d['roe'] > 10,
+              'debt<200': ~(d['debt_ratio'] > 200), 'opm_up': d['opm_chg'] > 0}[v]
+    tr = cfg.get('trend')
+    if tr and 'mom12_1' in d:
+        m &= {'mom12>0': d['mom12_1'] > 0, 'hi52>-20': d['hi52'] > -20,
+              'vol_low': d['vol60'] < d.groupby('date')['vol60'].transform('median'), 'val_surge': d['val_surge'] > 1.3}[tr]
     return d[m]
 
 
@@ -80,6 +93,12 @@ def picks(cfg, c=None):
     key = cfg['rank']
     if key == 'mix':
         c = c.assign(_k=c.groupby('date')['rs3'].rank(pct=True) + c.groupby('date')['ry'].rank(pct=True))
+    elif key in ('low_per', 'low_por'):
+        c = c.assign(_k=-c[key[4:]].fillna(1e9))
+    elif key == 'value_mom':
+        c = c.assign(_k=(1 - c['per_secpct'].fillna(1)) + c.groupby('date')['rs3'].rank(pct=True))
+    elif key not in c:
+        c = c.assign(_k=0.0)
     else:
         c = c.assign(_k=c[key])
     c = c.sort_values(['date', '_k'], ascending=[True, False])
