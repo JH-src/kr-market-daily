@@ -185,12 +185,42 @@ def walk_forward(series):
     return pd.DataFrame(out)
 
 
+STATE = os.environ.get('SIM_STATE', WORK)
+
+
+def save_series(series, path):
+    keys = list(series)
+    months = sorted(set().union(*[set(series[k].index) for k in keys])) if keys else []
+    arr = np.full((len(keys), len(months), 3), np.nan, dtype=np.float32)
+    pos = {m: i for i, m in enumerate(months)}
+    for j, k in enumerate(keys):
+        m = series[k]
+        idx = [pos[x] for x in m.index]
+        arr[j, idx, 0] = m['m63'].values; arr[j, idx, 1] = m['m126'].values; arr[j, idx, 2] = m['hit126'].values
+    np.savez_compressed(path, keys=np.array(keys, dtype=object), months=np.array([str(x)[:10] for x in months]), arr=arr)
+
+
+def load_series(path):
+    if not os.path.exists(path):
+        return {}
+    z = np.load(path, allow_pickle=True)
+    months = pd.to_datetime(z['months'])
+    out = {}
+    for j, k in enumerate(z['keys']):
+        a = z['arr'][j]
+        ok = ~np.isnan(a[:, 1])
+        out[str(k)] = pd.DataFrame({'m63': a[ok, 0], 'm126': a[ok, 1], 'hit126': a[ok, 2]}, index=months[ok])
+    return out
+
+
 def main(budget, seed):
     rng = np.random.default_rng(seed)
-    rp = os.path.join(WORK, 'search_results.csv')
-    sp = os.path.join(WORK, 'search_series.pkl')
-    done = pd.read_csv(rp) if os.path.exists(rp) else pd.DataFrame()
-    series = pickle.load(open(sp, 'rb')) if os.path.exists(sp) else {}
+    os.makedirs(STATE, exist_ok=True)
+    rp = os.path.join(STATE, 'search_results.csv.gz')
+    sp = os.path.join(STATE, 'search_series.npz')
+    old_rp, old_sp = os.path.join(WORK, 'search_results.csv'), os.path.join(WORK, 'search_series.pkl')
+    done = pd.read_csv(rp) if os.path.exists(rp) else (pd.read_csv(old_rp) if os.path.exists(old_rp) else pd.DataFrame())
+    series = load_series(sp) or (pickle.load(open(old_sp, 'rb')) if os.path.exists(old_sp) else {})
     seen = set(done['cfg']) if len(done) else set()
     t0 = time.time(); new = []
     cands = [dict(BASE)] + [sample(rng) for _ in range(100000)]
@@ -209,9 +239,11 @@ def main(budget, seed):
             series[key] = monthly(p)
         if len(new) % 50 == 0:
             pd.concat([done, pd.DataFrame(new)]).to_csv(rp, index=False)
-            pickle.dump(series, open(sp, 'wb')); print(len(new), round(time.time() - t0), flush=True)
+            print(len(new), round(time.time() - t0), flush=True)
+        if len(new) % 500 == 0:
+            save_series(series, sp)
     allr = pd.concat([done, pd.DataFrame(new)], ignore_index=True)
-    allr.to_csv(rp, index=False); pickle.dump(series, open(sp, 'wb'))
+    allr.to_csv(rp, index=False); save_series(series, sp)
     ok = allr.dropna(subset=['score'])
     wf = walk_forward(series)
     write_md(allr, ok, wf)

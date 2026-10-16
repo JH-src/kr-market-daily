@@ -18,6 +18,23 @@ def _read(name, cols):
     for f in fs:
         d = pd.read_csv(f, dtype=str, keep_default_na=False, usecols=lambda c: c in cols)
         out.append(d)
+    have = set(pd.concat([o['BAS_DD'] for o in out]).unique()) if out else set()
+    # 한투 장 마감 자료(data/kis/eod)로 거래소 자료가 아직 없는 날을 채움(시세만)
+    if name in ('stk', 'ksq'):
+        mk = 'KOSPI' if name == 'stk' else 'KOSDAQ'
+        nm = {}
+        upath = os.path.join(ROOT, 'config', 'universe_market.csv')
+        if os.path.exists(upath):
+            for l in open(upath, encoding='utf-8'):
+                c, m, n_ = l.rstrip('\n').split(',', 2); nm[c] = n_
+        for f in sorted(glob.glob(os.path.join(DATA, 'kis', 'eod', '20*.csv'))):
+            day = os.path.basename(f)[:8]
+            if day in have:
+                continue
+            d = pd.read_csv(f, dtype=str, keep_default_na=False)
+            d = d[d['MKT_NM'] == mk].copy()
+            d['ISU_NM'] = d['ISU_CD'].map(nm).fillna('')
+            out.append(d[[c for c in cols if c in d.columns]])
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=cols)
 
 
