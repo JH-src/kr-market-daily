@@ -998,6 +998,15 @@ def build(asof):
     h = []
     sp = sim_picks(asof)
     h += onepage2(asof, reg, fg, mf, sp, wat)
+    import report_ext as RX
+    try:
+        eb = RX.export_beat(px, asof)
+    except Exception as e:
+        print('export_beat 실패', e); eb = None
+    RX.track_update(sp, asof)
+    h += RX.pick_cards(sp, eb, px, asof)
+    h += RX.track_section(px, asof)
+    h += RX.export_section(eb)
     prov = os.path.join(DATA, '_calendar', 'provisional_kis.txt')
     kis_day = os.path.exists(prov) and asof.strftime('%Y%m%d') in open(prov).read().split()
     sub = f"{asof:%Y년 %m월 %d일} 장 마감 기준"
