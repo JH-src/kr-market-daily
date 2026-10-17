@@ -102,12 +102,29 @@ def main():
                  "\n\n## 강한 섹터(주도+과열 주의) 연도별 6개월 초과: 코스피 기준 vs 동일가중 기준\n\n" + pd.DataFrame({'코스피 기준': sk, '동일가중 기준': sy}).to_markdown())
     else:
         ewtxt = ''
+    # 교집합 시험: 거래대금 중심 섹터 ∩ 이익 증가 ∩ 신고가 비율 상위 절반 (기준 고정, 맞추지 않음)
+    def combo(g):
+        r = g['거래대금 비중'].rank(ascending=False)
+        return g[(r <= 10) & (g['영업이익 증가 중위'] > 0) & (g['신고가 근처 비율'] >= g['신고가 근처 비율'].median())]
+    def strong(g):
+        return g[g['stage'].isin(['주도', '과열 주의'])]
+    def strong_combo(g):
+        r = g['거래대금 비중'].rank(ascending=False)
+        return g[g['stage'].isin(['주도', '과열 주의']) & (r <= 10)]
+    ctab = {}
+    for nm, fn in (('거래대금 상위10 ∩ 이익 증가 ∩ 신고가 상위 절반', combo), ('강한 섹터(주도·과열)', strong), ('강한 섹터 ∩ 거래대금 상위10', strong_combo)):
+        x = pd.concat([fn(g).assign(date=t) for t, g in s.groupby('date') if 'date' in g or True], ignore_index=True) if len(s) else pd.DataFrame()
+        if x.empty:
+            continue
+        m = x.groupby('date')['fwd126'].mean()
+        ctab[nm] = m.groupby(m.index.year).mean()
+    ctxt = "\n\n## 교집합 시험(섹터 고르기, 이후 6개월 섹터 초과 %p, 해당 달 평균)\n\n" + pd.DataFrame(ctab).round(2).to_markdown() if ctab else ''
     p = os.path.join(ROOT, 'docs', 'sim', 'sector_test.md')
     with open(p, 'w', encoding='utf-8') as fh:
         fh.write("# 섹터 판정 검증\n\n매월 말 섹터(후보 5종목 이상)마다 기준값을 만들어 이후 섹터 지수의 후보군 동일가중 대비 성과와 비교. "
                  "ic: 섹터 간 순위 상관(2011~2023 월평균), 상위3 초과: 그 기준 상위 3개 섹터의 평균 초과(%p), 24~: 2024년 이후.\n\n")
         fh.write(o.round(3).to_markdown(index=False) + "\n\n## 지금 쓰는 단계 판정별 이후 성과(전 기간)\n\n" + st.to_markdown() +
-                 "\n\n2024년 이후\n\n" + st24.to_markdown() + ewtxt + "\n\n## 연도별 6개월 ic\n\n" + pd.DataFrame(yr).T.round(3).to_markdown() + "\n")
+                 "\n\n2024년 이후\n\n" + st24.to_markdown() + ewtxt + ctxt + "\n\n## 연도별 6개월 ic\n\n" + pd.DataFrame(yr).T.round(3).to_markdown() + "\n")
     print(open(p).read())
 
 
