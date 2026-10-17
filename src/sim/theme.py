@@ -36,19 +36,48 @@ def etf_themes():
     return g
 
 
+BUS_MAP = {'반도체': '반도체', '2차전지': '2차전지', '디스플레이': '디스플레이', '조선': '조선', '방산': '방산·우주', '원자력': '원자력',
+           '전력기기': '전력기기', '자동차': '자동차', '바이오': '바이오·헬스케어', '의료기기': '의료기기', '화장품': '화장품', '게임': '게임',
+           '엔터': '엔터·콘텐츠', '로봇': '로봇', '우주항공': '방산·우주', '음식료': '음식료', '통신장비': '통신장비', '인터넷·소프트웨어': '인터넷·소프트웨어'}
+
+
+def business_themes():
+    """사업보고서 '사업의 내용' 키워드 빈도로 주력 테마 판정(뚜렷할 때만)."""
+    p = os.path.join(ROOT, 'data', 'dart', 'business.csv')
+    if not os.path.exists(p):
+        return pd.Series(dtype=object), pd.DataFrame()
+    b = pd.read_csv(p, dtype={'stock_code': str}).drop_duplicates('stock_code', keep='last').set_index('stock_code')
+    cols = [c for c in BUS_MAP if c in b.columns]
+    m = b[cols].fillna(0)
+    top = m.idxmax(axis=1); v1 = m.max(axis=1)
+    v2 = m.apply(lambda r: r.nlargest(2).iloc[-1], axis=1)
+    dens = v1 / b['len'].clip(lower=1) * 10000
+    ok = (v1 >= 30) & (dens >= 8) & (v1 >= 1.5 * v2)
+    return top[ok].map(BUS_MAP), b
+
+
 def classify(ksic_sector, induty):
     """ksic_sector: 종목코드 -> 산업분류 기반 섹터, induty: 종목코드 -> KSIC 코드."""
     g = etf_themes()
     g = g[(g['n_etf'] >= 2) | (g['w'] >= 5)]
     best = g.sort_values(['n_etf', 'w'], ascending=False).drop_duplicates('code').set_index('code')['theme']
     out = ksic_sector.copy()
+    bt, b = business_themes()
+    for c, t in bt.items():          # 사업보고서 기준(ETF보다 먼저 깔고, ETF 테마가 있으면 덮어씀)
+        out[c] = t
     for c, t in best.items():
         out[c] = t
     # 반도체 안 세부: 장비(KSIC 292 특수목적기계·272 측정검사)·소재(20·22·24)·부품(262)·소자(261)
     for c in out.index:
         if out[c] in ('반도체', '반도체 소부장'):
             k = str(induty.get(c, ''))
-            if k.startswith(('292', '272', '271')):
+            eq = b.loc[c, '반도체장비'] if len(b) and c in b.index else 0
+            mt = b.loc[c, '반도체소재'] if len(b) and c in b.index else 0
+            if eq >= 10 and eq >= mt:
+                out[c] = '반도체 장비'
+            elif mt >= 8:
+                out[c] = '반도체 소재'
+            elif k.startswith(('292', '272', '271')):
                 out[c] = '반도체 장비'
             elif k.startswith(('20', '22', '24', '23')):
                 out[c] = '반도체 소재'
