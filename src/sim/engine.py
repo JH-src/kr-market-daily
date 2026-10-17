@@ -48,6 +48,10 @@ class Ctx:
             ri[n < BASE['min_sector_n']] = np.nan
             idx[s] = (1 + ri.fillna(0)).cumprod().where(n.cummax() >= BASE['min_sector_n'])
         self.secidx = pd.DataFrame(idx)
+        # 동일가중 시장 지수(전일 시총 상위 700, 같은 비중): 소수 대형주 쏠림 없는 시장 기준선
+        rk = capp.rank(axis=1, ascending=False)
+        rr = r.where(rk <= 700)
+        self.ew = (1 + rr.mean(axis=1).fillna(0)).cumprod()
         ma60 = self.close.rolling(60, min_periods=60).mean()
         above = (self.close > ma60).where(ma60.notna())
         self.breadth = above.sum(axis=1) / above.notna().sum(axis=1).replace(0, np.nan) * 100
@@ -86,8 +90,9 @@ def regime(C, i):
     return '위험선호' if score >= 2 else ('위험회피' if score <= -2 else '중립')
 
 
-def sector_stage(C, i):
-    k = C.kospi.iloc[:i + 1].dropna()
+def sector_stage(C, i, bench='kospi'):
+    """섹터 단계 판정. bench='ew'면 코스피 대신 동일가중 시장 지수 대비(삼성전자·SK하이닉스 쏠림 영향 제거)."""
+    k = (C.ew if bench == 'ew' else C.kospi).iloc[:i + 1].dropna()
     out = {}
     if len(k) < 130:
         return out

@@ -27,7 +27,7 @@ def build():
         '관련 수출 증가': g['exp_g3'].first() if 'exp_g3' in d else np.nan,
         '외국인 60일 유입': g['frgn60_cap'].mean() if 'frgn60_cap' in d else np.nan,
         '저PBR(1/PBR 중위)': (1 / g['pbr'].median()) if 'pbr' in d else np.nan,
-        'stage': g['stage'].first(),
+        'stage': g['stage'].first(), 'stage_ew': g['stage_ew'].first() if 'stage_ew' in d else None,
         'fwd63': (g['sec63'].first() - g['mkt63'].first()) * 100,
         'fwd126': (g['sec126'].first() - g['mkt126'].first()) * 100,
     }).reset_index()
@@ -43,7 +43,7 @@ def build():
 def main():
     s = build()
     s = s[s['date'] <= pd.Timestamp('2026-12-31')]
-    feats = [c for c in s.columns if c not in ('date', 'sector', 'n', 'stage', 'fwd63', 'fwd126')]
+    feats = [c for c in s.columns if c not in ('date', 'sector', 'n', 'stage', 'stage_ew', 'fwd63', 'fwd126')]
     rows, yr = [], {}
     for f in feats:
         r = {'기준': f}
@@ -69,12 +69,22 @@ def main():
     o = pd.DataFrame(rows).sort_values('ic126', ascending=False)
     st = s.groupby('stage')[['fwd63', 'fwd126']].mean().round(2)
     st24 = s[s['date'] >= '2024-01-01'].groupby('stage')[['fwd63', 'fwd126']].mean().round(2)
+    if 'stage_ew' in s and s['stage_ew'].notna().any():
+        se = s.groupby('stage_ew')[['fwd63', 'fwd126']].mean().round(2)
+        se['해당 섹터·달 수'] = s.groupby('stage_ew').size()
+        se24 = s[s['date'] >= '2024-01-01'].groupby('stage_ew')[['fwd63', 'fwd126']].mean().round(2)
+        sy = s[s['stage_ew'].isin(['주도', '과열 주의'])].groupby(s['date'].dt.year)['fwd126'].mean().round(2)
+        sk = s[s['stage'].isin(['주도', '과열 주의'])].groupby(s['date'].dt.year)['fwd126'].mean().round(2)
+        ewtxt = ("\n\n## 동일가중 시장 기준 단계 판정별(전 기간)\n\n" + se.to_markdown() + "\n\n2024년 이후\n\n" + se24.to_markdown() +
+                 "\n\n## 강한 섹터(주도+과열 주의) 연도별 6개월 초과: 코스피 기준 vs 동일가중 기준\n\n" + pd.DataFrame({'코스피 기준': sk, '동일가중 기준': sy}).to_markdown())
+    else:
+        ewtxt = ''
     p = os.path.join(ROOT, 'docs', 'sim', 'sector_test.md')
     with open(p, 'w', encoding='utf-8') as fh:
         fh.write("# 섹터 판정 검증\n\n매월 말 섹터(후보 5종목 이상)마다 기준값을 만들어 이후 섹터 지수의 후보군 동일가중 대비 성과와 비교. "
                  "ic: 섹터 간 순위 상관(2011~2023 월평균), 상위3 초과: 그 기준 상위 3개 섹터의 평균 초과(%p), 24~: 2024년 이후.\n\n")
         fh.write(o.round(3).to_markdown(index=False) + "\n\n## 지금 쓰는 단계 판정별 이후 성과(전 기간)\n\n" + st.to_markdown() +
-                 "\n\n2024년 이후\n\n" + st24.to_markdown() + "\n\n## 연도별 6개월 ic\n\n" + pd.DataFrame(yr).T.round(3).to_markdown() + "\n")
+                 "\n\n2024년 이후\n\n" + st24.to_markdown() + ewtxt + "\n\n## 연도별 6개월 ic\n\n" + pd.DataFrame(yr).T.round(3).to_markdown() + "\n")
     print(open(p).read())
 
 
@@ -83,7 +93,7 @@ def walkforward(K=(3, 5)):
     그해 매월 말 섹터 점수 상위 K개를 고름. 이후 3·6개월 섹터 지수의 후보군 동일가중 대비. 지금 시점 섹터 순위도 저장."""
     import json
     s = build()
-    feats = [c for c in s.columns if c not in ('date', 'sector', 'n', 'stage', 'fwd63', 'fwd126') and not c.startswith('종합')]
+    feats = [c for c in s.columns if c not in ('date', 'sector', 'n', 'stage', 'stage_ew', 'fwd63', 'fwd126') and not c.startswith('종합')]
     ic = {}
     for t, g in s.groupby('date'):
         r = {}

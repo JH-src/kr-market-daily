@@ -16,7 +16,7 @@ from sim import search as S
 from sim.factors import F, ROOT
 
 N = 6
-SCOPES = ('전체', '주도·초기', '주도·과열', '섹터점수 상위5', '섹터점수 상위8')
+SCOPES = ('전체', '주도·초기', '주도·과열', '주도·과열(동일가중)', '섹터점수 상위5')
 GATES = {
     '없음': lambda g: pd.Series(True, index=g.index),
     '고점-30%이내': lambda g: g['_hi52'] > -30,
@@ -109,6 +109,8 @@ def scope_df(d, sc):
         return d[d['stage'].isin(['주도', '초기'])]
     if sc == '주도·과열':
         return d[d['stage'].isin(['주도', '과열 주의'])]
+    if sc == '주도·과열(동일가중)':
+        return d[d['stage_ew'].isin(['주도', '과열 주의'])] if 'stage_ew' in d else d.iloc[0:0]
     if sc == '섹터점수 상위5':
         return d[d['sec_rank'] <= 5]
     if sc == '섹터점수 상위8':

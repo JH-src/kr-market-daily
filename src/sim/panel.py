@@ -30,6 +30,7 @@ def build(level, start='2011-01-01'):
         vr = C.val20.iloc[i][ok].rank(ascending=False)
         uni = cr.index[(cr <= CAP_MAX) & (vr.reindex(cr.index) <= VAL_MAX)]
         st = E.sector_stage(C, i)
+        st_ew = E.sector_stage(C, i, 'ew')
         reg = E.regime(C, i)
         # 베타: 직전 250거래일, 비교 기준은 시총 상위 700 동일 비중 일간 수익률
         u700 = cr.index[cr <= 700]
@@ -60,7 +61,7 @@ def build(level, start='2011-01-01'):
             s = C.sec.get(c)
             S = st.get(s, {})
             f = fin.get(c, {})
-            d = {'date': t, 'code': c, 'regime': reg, 'sector': s, 'stage': S.get('stage'), 'sec_m1': S.get('m1'), 'sec_m3': S.get('m3'),
+            d = {'date': t, 'code': c, 'regime': reg, 'sector': s, 'stage': S.get('stage'), 'stage_ew': st_ew.get(s, {}).get('stage'), 'sec_m1': S.get('m1'), 'sec_m3': S.get('m3'),
                  'r1': r1[c], 'r3': r3[c], 'g60': g60[c], 'rsi': rsi[c], 'caprank': cr[c], 'valrank': vr.get(c),
                  'rights_days': (t - last_r[c]).days if c in last_r.index else 999,
                  'ry': f.get('ry'), 'ryp': f.get('ryp'), 'op': f.get('op'), 'opp': f.get('opp'), 'beta': beta.get(c)}
