@@ -55,7 +55,7 @@ def summary(code, n=2, cap=240):
         return '', ''
     head, body = t.split('\n', 1)
     sents = re.split(r'(?<=[다음])\.\s+|(?<=니다)\.\s*', body)
-    pick = []
+    cands = []
     for s in sents:
         s = s.strip()
         if not re.search(r'당사|회사는|동사', s):
@@ -64,16 +64,17 @@ def summary(code, n=2, cap=240):
             continue
         if re.search(r'참조|참고하|기재|다음의? 표|다음과 같|공급받|원재료|원료|감사|회계|연결대상|종속|한국표준산업분류|\.jpg|출처', s):
             continue
-        if re.search(r'생산실적|가동|교대|설비|주식|배당|임원|해당사항|당사항|위험|변동될', s):
+        if re.search(r'생산실적|가동|교대|설비|주식|배당|임원|해당사항|당사항|위험|변동될|최대주주|자료가 없|영업수익은|상표권|하락|감소', s):
             continue
         k = s.find('당사') if '당사' in s else max(s.find('회사는'), 0)
-        if k > 40:   # 문장 중간에서 시작하면 앞 문맥이 잘려 어색
+        if k > 40:
             continue
         s = s[k:]
         if 15 < len(s) < 260:
-            pick.append(s.rstrip('.') + '.')
-        if len(pick) >= n:
-            break
+            cands.append(s.rstrip('.') + '.')
+    # 무엇을 하는 회사인지 드러나는 문장(영위·주요 사업·전문·주력)을 먼저
+    key = [c for c in cands if re.search(r'영위|주요 사업|주력|전문|주요 제품|사업부문', c)]
+    pick = (key + [c for c in cands if c not in key])[:n]
     out = ' '.join(pick)
     return (out[:cap] + '…' if len(out) > cap else out), head.split('|')[0]
 

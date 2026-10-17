@@ -13,7 +13,7 @@ def main(start='2026-01-01', end=None):
     fri = pd.Series(ds, index=ds).groupby(ds.to_period('W')).max()
     rows = []
     for t in fri:
-        sp = R.sim_picks(t)
+        sp = R.sim_picks_v2(t)
         for x in sp['rows']:
             rows.append({'date': t.strftime('%Y%m%d'), 'code': x['code'], 'name': x['name'], 'sector': x['sector'], 'stage': x['stage'],
                          'type': x['type'], 'close': f"{x['close']:.0f}", 'reg': sp['reg']})
