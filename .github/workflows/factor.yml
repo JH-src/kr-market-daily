@@ -25,6 +25,7 @@ jobs:
           python3 -m sim.panel coarse ksic3 theme
           python3 -m sim.enrich
           python3 -m sim.enrich_flows || echo "수급 지표 생략"
+          python3 -m sim.enrich_extra || echo "추가 요소 생략"
       - name: 요소 성적표·종합 점수
         env:
           SIM_CACHE: /tmp/simcache

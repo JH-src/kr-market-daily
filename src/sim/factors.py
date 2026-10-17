@@ -33,6 +33,9 @@ F = {
     'frgn_streak': (lambda d: d.get('frgn_streak'), '외국인 연속 순매수 일수'),
     'major_foreign90': (lambda d: d.get('major_foreign90'), '90일 내 외국계 5% 공시 건수'),
     'sec_m3': (lambda d: d['sec_m3'], '소속 섹터 3개월 강도'),
+    'buyback90': (lambda d: d.get('buyback90'), '90일 내 자사주 취득 결정'),
+    'supply90': (lambda d: d.get('supply90'), '90일 내 단일판매·공급계약 공시'),
+    'exp_g3': (lambda d: d.get('exp_g3'), '소속 섹터 관련 수출 3개월 전년비'),
 }
 
 
