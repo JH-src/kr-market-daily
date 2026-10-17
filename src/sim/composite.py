@@ -22,9 +22,9 @@ def zrank(x):
     return (r - 0.5).fillna(0)   # 값 없으면 중립
 
 
-def main(N=6):
+def main(N=6, a=None, b='2023-12-31', name='composite'):
     d = S.panel('theme').copy()
-    d = d[(d['date'] >= S.D0) & (d['date'] <= pd.Timestamp('2023-12-31'))]
+    d = d[(d['date'] >= (pd.Timestamp(a) if a else S.D0)) & (d['date'] <= pd.Timestamp(b))]
     if 'prsn20' in d and 'prsn20_cap' not in d:
         d['prsn20_cap'] = d['prsn20'] / d['cap'] * 100
     for k, (f, _) in F.items():
@@ -59,12 +59,17 @@ def main(N=6):
             yearly[f'{scope}|{nm}'] = ann
     o = pd.DataFrame(rows)
     y = pd.DataFrame(yearly).T.round(1)
-    p = os.path.join(ROOT, 'docs', 'sim', 'composite.md')
+    p = os.path.join(ROOT, 'docs', 'sim', f'{name}.md')
     with open(p, 'w', encoding='utf-8') as f:
-        f.write(f"# 종합 점수 시험\n\n요소마다 후보군 안 백분위 순위를 같은 비중으로 더함(값 없으면 중립). 매월 말 상위 {N}종목, 비용 0.5% 차감, 상위 700 동일가중 대비(%p). 2011~2023. 가중치를 성과에 맞춰 고르지 않음.\n\n")
+        f.write(f"# 종합 점수 시험\n\n요소마다 후보군 안 백분위 순위를 같은 비중으로 더함(값 없으면 중립). 매월 말 상위 {N}종목, 비용 0.5% 차감, 상위 700 동일가중 대비(%p). {d['date'].min():%Y.%m}~{d['date'].max():%Y.%m}. 가중치를 성과에 맞춰 고르지 않음.\n\n")
         f.write(o.round(2).to_markdown(index=False) + "\n\n## 연도별 6개월 초과(%p)\n\n" + y.to_markdown() + "\n")
     print(o.round(2).to_string())
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == 'holdout':
+        # 남겨 둔 2024년 이후 구간: 요소·조합을 고르는 데 쓰지 않은 기간에서 한 번 확인
+        main(a='2024-01-01', b='2099-12-31', name='composite_holdout')
+    else:
+        main()
