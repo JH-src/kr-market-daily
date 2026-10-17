@@ -89,17 +89,6 @@ def main(N=6, a=None, b='2023-12-31', name='composite'):
     print(o.round(2).to_string())
 
 
-if __name__ == '__main__':
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == 'wf':
-        walkforward()
-    elif len(sys.argv) > 1 and sys.argv[1] == 'holdout':
-        # 남겨 둔 2024년 이후 구간: 요소·조합을 고르는 데 쓰지 않은 기간에서 한 번 확인
-        main(a='2024-01-01', b='2099-12-31', name='composite_holdout')
-    else:
-        main()
-
-
 def walkforward(N=6):
     """걷기식: 해마다 그 이전 자료의 요소 성적(정보계수)만 보고 쓸 요소와 방향을 정해 그해에 적용.
     요소 고르기 규칙(고정): 학습 기간 연도별 정보계수의 t값이 2 이상이고 플러스인 해가 70% 이상이면 +, 반대면 -(감점), 나머지는 안 씀.
@@ -164,3 +153,14 @@ def walkforward(N=6):
             f.write(f"## {scope}\n\n2013~2023 평균 3개월 {pre['ex63'].mean():+.2f}%p, 6개월 {pre['ex126'].mean():+.2f}%p, 플러스 해 {(a6[a6.index < 2024] > 0).sum()}/{(a6.index < 2024).sum()} · "
                     f"2024년 이후 3개월 {post['ex63'].mean():+.2f}%p, 6개월 {post['ex126'].mean():+.2f}%p\n\n" + t.to_markdown() + "\n\n")
     print(open(p).read())
+
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == 'wf':
+        walkforward()
+    elif len(sys.argv) > 1 and sys.argv[1] == 'holdout':
+        # 남겨 둔 2024년 이후 구간: 요소·조합을 고르는 데 쓰지 않은 기간에서 한 번 확인
+        main(a='2024-01-01', b='2099-12-31', name='composite_holdout')
+    else:
+        main()

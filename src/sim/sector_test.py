@@ -32,6 +32,9 @@ def build():
         'fwd126': (g['sec126'].first() - g['mkt126'].first()) * 100,
     }).reset_index()
     s = s[s['n'] >= 5]
+    for c in s.columns:
+        if c not in ('date', 'sector', 'stage'):
+            s[c] = pd.to_numeric(s[c], errors='coerce')
     s['종합(이익+신고가+수출)'] = s.groupby('date')[['영업이익 증가 중위', '신고가 근처 비율', '관련 수출 증가']].rank(pct=True).mean(axis=1)
     s['종합(이익+신고가+외국인)'] = s.groupby('date')[['영업이익 증가 중위', '신고가 근처 비율', '외국인 60일 유입']].rank(pct=True).mean(axis=1)
     return s
