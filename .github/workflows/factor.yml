@@ -1,0 +1,38 @@
+name: factor
+# 요소 성적표·종합 점수 시험만 따로 빨리 돌린다(탐색과 별개).
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: factor
+  cancel-in-progress: false
+jobs:
+  factor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: 준비
+        run: pip install -q pandas numpy tabulate
+      - name: 판단 재료 표 만들기
+        env:
+          SIM_CACHE: /tmp/simcache
+        run: |
+          mkdir -p /tmp/simcache
+          cd src
+          python3 -c "from sim import data as D; D.prices(refresh=True)"
+          python3 -m sim.panel coarse ksic3 theme
+          python3 -m sim.enrich
+          python3 -m sim.enrich_flows || echo "수급 지표 생략"
+      - name: 요소 성적표·종합 점수
+        env:
+          SIM_CACHE: /tmp/simcache
+        run: |
+          cd src
+          python3 -m sim.factors > /tmp/f.log 2>&1 || tail -20 /tmp/f.log
+          python3 -m sim.composite 2>&1 | tail -30
+          cd ..
+          git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
+          git add docs/sim/factors.md docs/sim/composite.md && git commit -q -m "요소 성적표·종합 점수 시험" || exit 0
+          for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; sleep 5; done
