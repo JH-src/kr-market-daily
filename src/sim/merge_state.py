@@ -12,7 +12,7 @@ def main(src, dst):
     os.makedirs(dst, exist_ok=True)
     r.to_csv(os.path.join(dst, 'search_results_v2.csv.gz'), index=False)
     S.save_series(s, os.path.join(dst, 'search_series_v2.npz'))
-    ok = r.dropna(subset=['score'])
+    ok = r.dropna(subset=['score']) if 'score' in r else r.iloc[0:0]
     S.write_md(r, ok, S.walk_forward(s))
     print('merged', len(r), len(s))
 

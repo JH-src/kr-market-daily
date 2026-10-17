@@ -33,7 +33,7 @@ jobs:
         run: |
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
           echo "run ${{ github.run_number }} 판단 재료 완료 $(TZ=Asia/Seoul date '+%F %H:%M')" > sim_state/status.txt
-          git add sim_state/status.txt && git commit -q -m "자동 탐색 진행 표시" && (git pull --rebase -q && git push) || true
+          git add sim_state/status.txt && git commit -q -m "자동 탐색 진행 표시" && (git pull --rebase -X theirs -q && git push) || true
       - name: 탐색(약 4시간)
         env:
           SIM_CACHE: /tmp/simcache
@@ -41,7 +41,7 @@ jobs:
         run: |
           mkdir -p /tmp/newstate && cp sim_state/search_*_v2* /tmp/newstate/ 2>/dev/null || true
           cd src
-          timeout 15000 python3 -m sim.search 14000 ${{ github.run_number }} || true
+          timeout 13000 python3 -m sim.search 12000 ${{ github.run_number }} || true
       - name: 결과 저장
         run: |
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"

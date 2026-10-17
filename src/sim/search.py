@@ -153,35 +153,54 @@ def stats(p, c, a=D0, b=D1):
     return out
 
 
+def available_levels():
+    return [l for l in SPACE['level'] if os.path.exists(os.path.join(WORK, f'panel_{l}_x.pkl')) or os.path.exists(os.path.join(WORK, f'panel_{l}.pkl'))]
+
+
 def sample(rng):
     cfg = {k: v[rng.integers(len(v))] for k, v in SPACE.items()}
+    lv = available_levels()
+    if cfg['level'] not in lv:
+        cfg['level'] = lv[rng.integers(len(lv))]
     # 절반은 기준 로직 근처(한두 개만 변경)
     if rng.random() < 0.5:
         cfg = dict(BASE)
         for k in rng.choice(list(SPACE), size=rng.integers(1, 3), replace=False):
             cfg[k] = SPACE[k][rng.integers(len(SPACE[k]))]
+        if cfg['level'] not in lv:
+            cfg['level'] = lv[0]
     return cfg
 
 
 def walk_forward(series):
-    """연도마다 그 이전(6개월 보유 겹침 제외) 달들의 성과로 최고 로직을 골라, 처음 보는 그해에 적용."""
+    """연도마다 그 이전(6개월 보유 겹침 제외) 달들의 성과로 최고 로직을 골라, 처음 보는 그해에 적용(행렬 계산)."""
+    if not series:
+        return pd.DataFrame()
+    keys = list(series)
+    months = sorted(set().union(*[set(series[k].index) for k in keys]))
+    pos = {m: i for i, m in enumerate(months)}
+    A = np.full((len(keys), len(months), 3), np.nan, dtype=np.float32)
+    for j, k in enumerate(keys):
+        m = series[k]; idx = [pos[x] for x in m.index]
+        A[j, idx, 0] = m['m63'].values; A[j, idx, 1] = m['m126'].values; A[j, idx, 2] = m['hit126'].values
+    M = pd.DatetimeIndex(months)
     out = []
+    import warnings
+    warnings.filterwarnings('ignore')
     for y in range(2013, 2024):
-        tr_end = pd.Timestamp(f'{y - 1}-06-30')
-        best, bs = None, -1e9
-        for key, m in series.items():
-            tr = m[(m.index >= D0) & (m.index <= tr_end)]
-            if len(tr) < 18:
-                continue
-            sc = (tr['m63'].mean() + tr['m126'].mean()) / 2 + 0.1 * (tr['hit126'].mean() - 50)
-            if sc > bs:
-                bs, best = sc, key
-        if best is None:
+        tr = (M >= D0) & (M <= pd.Timestamp(f'{y - 1}-06-30'))
+        te = (M >= pd.Timestamp(f'{y}-01-01')) & (M <= pd.Timestamp(f'{y}-12-31'))
+        if tr.sum() == 0:
             continue
-        te = series[best]
-        te = te[(te.index >= f'{y}-01-01') & (te.index <= f'{y}-12-31')]
-        out.append({'year': y, 'chosen': best, 'train_score': bs, 'months': len(te),
-                    'oos_ex63': te['m63'].mean(), 'oos_ex126': te['m126'].mean(), 'oos_hit126': te['hit126'].mean()})
+        cnt = np.sum(~np.isnan(A[:, tr, 1]), axis=1)
+        sc = (np.nanmean(A[:, tr, 0], axis=1) + np.nanmean(A[:, tr, 1], axis=1)) / 2 + 0.1 * (np.nanmean(A[:, tr, 2], axis=1) - 50)
+        sc[cnt < 18] = -np.inf
+        sc = np.where(np.isnan(sc), -np.inf, sc)
+        j = int(np.argmax(sc))
+        if not np.isfinite(sc[j]):
+            continue
+        out.append({'year': y, 'chosen': keys[j], 'train_score': float(sc[j]), 'months': int(np.sum(~np.isnan(A[j, te, 1]))),
+                    'oos_ex63': float(np.nanmean(A[j, te, 0])), 'oos_ex126': float(np.nanmean(A[j, te, 1])), 'oos_hit126': float(np.nanmean(A[j, te, 2]))})
     return pd.DataFrame(out)
 
 
@@ -244,7 +263,7 @@ def main(budget, seed):
             save_series(series, sp)
     allr = pd.concat([done, pd.DataFrame(new)], ignore_index=True)
     allr.to_csv(rp, index=False); save_series(series, sp)
-    ok = allr.dropna(subset=['score'])
+    ok = allr.dropna(subset=['score']) if 'score' in allr else allr.iloc[0:0]
     wf = walk_forward(series)
     write_md(allr, ok, wf)
     print('done', len(new), len(allr))
@@ -253,6 +272,8 @@ def main(budget, seed):
 def write_md(allr, ok, wf):
     cols = ['score', 'n', 'm63', 'm126', 'trim63', 'trim126', 'med126', 'hit63', 'hit126', 'idio126', 'stk126', 'secp126', 'h1_126', 'h2_126', 'ic126', 'ic_t126']
     top = ok.sort_values('score', ascending=False).head(15)
+    if ok.empty:
+        return
     base = ok[ok['cfg'] == json.dumps(BASE, ensure_ascii=False, sort_keys=True)]
     md = ['# 로직 자동 탐색 요약', '', f'평가한 로직 수: {len(allr)} (설계 구간 2011~2023, 실적 요소는 2016년 이후만 존재, 매월 말 5~7종목, 비용 0.5% 차감, 2024년 이후 미사용)', '',
           '열: m=시장 평균 대비 월평균(%p), trim=상위 5건 제외, med=종목 중앙값, hit=시장 평균 이긴 비율(%), idio=베타 반영 종목 고유 몫, stk=섹터 대비 종목 몫, secp=섹터가 시장보다 더 간 몫, h1/h2=2011~17 / 2018~23, ic=로직 순위와 성과의 순위 상관(월평균), ic_t=그 t값', '',
