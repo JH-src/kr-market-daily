@@ -10,7 +10,7 @@ import pandas as pd
 WORK = os.environ.get('SIM_CACHE', '/tmp/sim_cache')
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 COST = 0.005
-D0, D1 = pd.Timestamp('2016-06-01'), pd.Timestamp('2023-12-31')
+D0, D1 = pd.Timestamp('2011-01-01'), pd.Timestamp('2023-12-31')   # 자료가 있는 가장 이른 시점부터(실적 요소는 2016년 이후에만 존재)
 
 SPACE = {
     'level': ['coarse', 'ksic3', 'theme'],
@@ -141,7 +141,7 @@ def stats(p, c, a=D0, b=D1):
         out[f'idio{h}'] = p[f'idio{h}'].clip(-0.6, 1.5).groupby(p['date']).mean().mean() * 100
         out[f'stk{h}'] = p[f'stk{h}'].clip(-0.6, 1.5).groupby(p['date']).mean().mean() * 100
         out[f'secp{h}'] = p[f'secp{h}'].groupby(p['date']).mean().mean() * 100
-        h1 = mm[mm.index < '2020-01-01'].mean() * 100; h2 = mm[mm.index >= '2020-01-01'].mean() * 100
+        h1 = mm[mm.index < '2018-01-01'].mean() * 100; h2 = mm[mm.index >= '2018-01-01'].mean() * 100
         out[f'h1_{h}'], out[f'h2_{h}'] = h1, h2
         # 정보계수: 같은 달 후보들 안에서 순위 점수와 시장 대비 성과의 순위 상관
         ic = c.groupby('date').apply(lambda g: g['_k'].rank().corr(g[f'ex{h}'].rank()) if len(g) >= 8 else np.nan).dropna()
@@ -166,12 +166,12 @@ def sample(rng):
 def walk_forward(series):
     """연도마다 그 이전(6개월 보유 겹침 제외) 달들의 성과로 최고 로직을 골라, 처음 보는 그해에 적용."""
     out = []
-    for y in range(2019, 2024):
+    for y in range(2013, 2024):
         tr_end = pd.Timestamp(f'{y - 1}-06-30')
         best, bs = None, -1e9
         for key, m in series.items():
             tr = m[(m.index >= D0) & (m.index <= tr_end)]
-            if len(tr) < 24:
+            if len(tr) < 18:
                 continue
             sc = (tr['m63'].mean() + tr['m126'].mean()) / 2 + 0.1 * (tr['hit126'].mean() - 50)
             if sc > bs:
@@ -216,11 +216,11 @@ def load_series(path):
 def main(budget, seed):
     rng = np.random.default_rng(seed)
     os.makedirs(STATE, exist_ok=True)
-    rp = os.path.join(STATE, 'search_results.csv.gz')
-    sp = os.path.join(STATE, 'search_series.npz')
+    rp = os.path.join(STATE, 'search_results_v2.csv.gz')
+    sp = os.path.join(STATE, 'search_series_v2.npz')
     old_rp, old_sp = os.path.join(WORK, 'search_results.csv'), os.path.join(WORK, 'search_series.pkl')
-    done = pd.read_csv(rp) if os.path.exists(rp) else (pd.read_csv(old_rp) if os.path.exists(old_rp) else pd.DataFrame())
-    series = load_series(sp) or (pickle.load(open(old_sp, 'rb')) if os.path.exists(old_sp) else {})
+    done = pd.read_csv(rp) if os.path.exists(rp) else pd.DataFrame()
+    series = load_series(sp)
     seen = set(done['cfg']) if len(done) else set()
     t0 = time.time(); new = []
     cands = [dict(BASE)] + [sample(rng) for _ in range(100000)]
@@ -254,8 +254,8 @@ def write_md(allr, ok, wf):
     cols = ['score', 'n', 'm63', 'm126', 'trim63', 'trim126', 'med126', 'hit63', 'hit126', 'idio126', 'stk126', 'secp126', 'h1_126', 'h2_126', 'ic126', 'ic_t126']
     top = ok.sort_values('score', ascending=False).head(15)
     base = ok[ok['cfg'] == json.dumps(BASE, ensure_ascii=False, sort_keys=True)]
-    md = ['# 로직 자동 탐색 요약', '', f'평가한 로직 수: {len(allr)} (설계 구간 2016.6~2023, 매월 말 5~7종목, 비용 0.5% 차감, 2024년 이후 미사용)', '',
-          '열: m=시장 평균 대비 월평균(%p), trim=상위 5건 제외, med=종목 중앙값, hit=시장 평균 이긴 비율(%), idio=베타 반영 종목 고유 몫, stk=섹터 대비 종목 몫, secp=섹터가 시장보다 더 간 몫, h1/h2=2016.6~19 / 2020~23, ic=로직 순위와 성과의 순위 상관(월평균), ic_t=그 t값', '',
+    md = ['# 로직 자동 탐색 요약', '', f'평가한 로직 수: {len(allr)} (설계 구간 2011~2023, 실적 요소는 2016년 이후만 존재, 매월 말 5~7종목, 비용 0.5% 차감, 2024년 이후 미사용)', '',
+          '열: m=시장 평균 대비 월평균(%p), trim=상위 5건 제외, med=종목 중앙값, hit=시장 평균 이긴 비율(%), idio=베타 반영 종목 고유 몫, stk=섹터 대비 종목 몫, secp=섹터가 시장보다 더 간 몫, h1/h2=2011~17 / 2018~23, ic=로직 순위와 성과의 순위 상관(월평균), ic_t=그 t값', '',
           '## 걷기식 검증(그해 이전 자료로 고른 로직을 그해에 적용 = 정직한 성과)', '', wf.round(2).to_markdown(index=False) if len(wf) else '(없음)', '',
           f"걷기식 평균: 3개월 {wf['oos_ex63'].mean():+.2f}%p, 6개월 {wf['oos_ex126'].mean():+.2f}%p, 6개월 이긴 비율 {wf['oos_hit126'].mean():.1f}%" if len(wf) else '', '',
           '## 기준 로직', '', base[cols + ['cfg']].round(2).to_markdown(index=False) if len(base) else '', '',

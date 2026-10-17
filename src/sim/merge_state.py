@@ -5,13 +5,13 @@ from . import search as S
 
 
 def main(src, dst):
-    rs = [pd.read_csv(os.path.join(d, 'search_results.csv.gz')) for d in (dst, src) if os.path.exists(os.path.join(d, 'search_results.csv.gz'))]
+    rs = [pd.read_csv(os.path.join(d, 'search_results_v2.csv.gz')) for d in (dst, src) if os.path.exists(os.path.join(d, 'search_results_v2.csv.gz'))]
     r = pd.concat(rs, ignore_index=True).drop_duplicates('cfg', keep='last') if rs else pd.DataFrame()
-    s = S.load_series(os.path.join(dst, 'search_series.npz'))
-    s.update(S.load_series(os.path.join(src, 'search_series.npz')))
+    s = S.load_series(os.path.join(dst, 'search_series_v2.npz'))
+    s.update(S.load_series(os.path.join(src, 'search_series_v2.npz')))
     os.makedirs(dst, exist_ok=True)
-    r.to_csv(os.path.join(dst, 'search_results.csv.gz'), index=False)
-    S.save_series(s, os.path.join(dst, 'search_series.npz'))
+    r.to_csv(os.path.join(dst, 'search_results_v2.csv.gz'), index=False)
+    S.save_series(s, os.path.join(dst, 'search_series_v2.npz'))
     ok = r.dropna(subset=['score'])
     S.write_md(r, ok, S.walk_forward(s))
     print('merged', len(r), len(s))

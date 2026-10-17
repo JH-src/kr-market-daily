@@ -39,7 +39,7 @@ jobs:
           SIM_CACHE: /tmp/simcache
           SIM_STATE: /tmp/newstate
         run: |
-          mkdir -p /tmp/newstate && cp sim_state/search_* /tmp/newstate/ 2>/dev/null || true
+          mkdir -p /tmp/newstate && cp sim_state/search_*_v2* /tmp/newstate/ 2>/dev/null || true
           cd src
           timeout 15000 python3 -m sim.search 14000 ${{ github.run_number }} || true
       - name: 결과 저장
