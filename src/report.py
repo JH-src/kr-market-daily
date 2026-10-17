@@ -950,10 +950,30 @@ def sim_picks(asof):
     return {'rows': rows, 'reg': reg, 'n': n, 'n_cand': len(cand), 'stages': st, 'asof': t}
 
 
+def engine_cfg():
+    p = os.path.join(ROOT, 'docs', 'sim', 'engine_current.json')
+    base = {'variant': '주도·과열|영업이익증가|섹터당2', 'gate': '영업이익증가', 'cap_per_sector': 2,
+            'weights': {'low_vol': 1, 'bp': 1, 'roe': 1, 'op_g': 1, 'opm_chg': 1, 'hi52': 1, 'r1rel': -1, 'val_surge': -1}}
+    try:
+        c = json.load(open(p, encoding='utf-8'))
+        if c.get('weights'):
+            return c
+    except Exception:
+        pass
+    return base
+
+
+FEAT_NM = {'op_g': '영업이익 증가', 'opm_chg': '이익률 개선', 'roe': 'ROE', 'ep': '낮은 PER', 'bp': '낮은 PBR', 'op_yield': '낮은 시총/영업이익',
+           'rs3': '섹터 대비 3개월', 'r1rel': '섹터 대비 1개월', 'r1': '1개월 수익', 'hi52': '52주 고점 근접', 'low_vol': '낮은 변동성', 'small': '작은 시총',
+           'major_foreign90': '외국계 5% 공시', 'val_surge': '거래대금 급증', 'frgn60_cap': '외국인 60일 순매수', 'frgn20_cap': '외국인 20일 순매수',
+           'mom12_1': '12개월 모멘텀', 'accel_d': '매출 가속', 'ry': '매출 증가'}
+
+
 def sim_picks_v2(asof):
-    """v2: 주도·초기 섹터 안에서 꾸준했던 요소 6개(낮은 변동성·저PBR·ROE·영업이익 증가·이익률 개선·52주 고점 근접)를
-    같은 비중으로 더하고 단기 과열(섹터 대비 1개월 급등·거래대금 급증)을 감점한 종합 점수 순."""
+    """엔진 v2(docs/sim/engine_current.json: 매일 걷기식으로 다시 고른 요소·방향)를 오늘에 적용.
+    범위: 주도·과열 섹터(강한 섹터) / 통과 조건: 영업이익 증가 / 섹터당 최대 2종목 / 같은 비중 종합 점수 순."""
     from sim import engine as SE
+    cfg = engine_cfg()
     if 'theme' not in _CTX:
         _CTX['theme'] = SE.Ctx('theme')
     C = _CTX['theme']
@@ -968,60 +988,90 @@ def sim_picks_v2(asof):
     st = SE.sector_stage(C, i)
     reg = SE.regime(C, i)
     n = SIM_LOGIC_V2['n_by_regime'][reg]
-    cand = [c for c in uni if st.get(C.sec.get(c), {}).get('stage') in ('주도', '초기') and C.sec.get(c) != '기타']
+    stages = ('주도', '과열 주의') if cfg.get('scope', '주도·과열') == '주도·과열' else ('주도', '초기')
+    cand = [c for c in uni if st.get(C.sec.get(c), {}).get('stage') in stages and C.sec.get(c) != '기타']
     if not cand:
-        return {'rows': [], 'reg': reg, 'n': n, 'n_cand': 0, 'stages': st, 'asof': t}
+        return {'rows': [], 'reg': reg, 'n': n, 'n_cand': 0, 'stages': st, 'asof': t, 'cfg': cfg}
     P = C.P.iloc[:i + 1][cand]
     d = pd.DataFrame(index=cand)
     d['sector'] = [C.sec.get(c) for c in cand]
     d['stage'] = [st[s]['stage'] for s in d['sector']]
-    d['low_vol'] = -(W['ret'].iloc[i - 59:i + 1][cand].std() * np.sqrt(250) * 100)
+    vol = W['ret'].iloc[i - 59:i + 1][cand].std() * np.sqrt(250) * 100
+    d['low_vol'] = -vol
     d['hi52'] = (P.iloc[-1] / P.iloc[-252:].max() - 1) * 100
-    r1 = (P.iloc[-1] / P.iloc[-22] - 1) * 100
-    d['r1'] = r1
-    d['r1rel'] = r1 - pd.Series([st[s].get('m1', np.nan) for s in d['sector']], index=cand)
+    d['r1'] = (P.iloc[-1] / P.iloc[-22] - 1) * 100
+    r3 = (P.iloc[-1] / P.iloc[-64] - 1) * 100
+    d['r1rel'] = d['r1'] - pd.Series([st[s].get('m1', np.nan) for s in d['sector']], index=cand)
+    d['rs3'] = r3 - pd.Series([st[s].get('m3', np.nan) for s in d['sector']], index=cand)
+    d['mom12_1'] = (P.iloc[-22] / P.iloc[-253] - 1) * 100 if len(P) > 253 else np.nan
     val = W['val']
     d['val_surge'] = val.iloc[i - 19:i + 1][cand].mean() / val.iloc[i - 119:i + 1][cand].mean()
+    d['cap'] = cap.reindex(cand)
+    d['small'] = -np.log(d['cap'])
     fin = SE.fin_at(C, t)
     va = SE.value_at(C, t)
     fq = C.fin[C.fin['avail'] <= t].groupby('stock_code').tail(1).set_index('stock_code')
     fq = fq[(t - fq['avail']).dt.days <= 200]
-    opm = (fq['op'] / fq['rev'] - fq['op_py'] / fq['rev_py']) * 100
-    d['opm_chg'] = opm.reindex(cand)
+    d['opm_chg'] = ((fq['op'] / fq['rev'] - fq['op_py'] / fq['rev_py']) * 100).reindex(cand)
     d['op_g'] = [(fin[c]['op'] / fin[c]['opp'] - 1) if c in fin and pd.notna(fin[c]['opp']) and fin[c]['opp'] > 0 else np.nan for c in cand]
+    d['ry'] = [fin.get(c, {}).get('ry', np.nan) for c in cand]
+    d['accel_d'] = [fin.get(c, {}).get('ry', np.nan) - fin.get(c, {}).get('ryp', np.nan) for c in cand]
+    pos = lambda x: x.where(x > 0)
     eq = pd.Series({c: va[c]['eq'] for c in cand if c in va}).reindex(cand)
     ni = pd.Series({c: va[c]['ttm'] for c in cand if c in va}).reindex(cand)
-    pos = lambda x: x.where(x > 0)
-    d['bp'] = 1 / (cap.reindex(cand) / pos(eq))
+    opt = C.fin[C.fin['avail'] <= t].groupby('stock_code')['op'].apply(lambda x: x.tail(4).sum() if len(x) >= 4 else np.nan).reindex(cand)
+    d['bp'] = pos(eq) / d['cap']
+    d['ep'] = pos(ni) / d['cap']
+    d['op_yield'] = pos(opt) / d['cap']
     d['roe'] = ni / pos(eq) * 100
-    d['cap'] = cap.reindex(cand)
+    # 외국계 5% 공시(90일)
+    try:
+        import report_ext as RX
+        mh = pd.read_csv(os.path.join(DATA, 'dart', 'major_holders.csv'), dtype=str)
+        mh['dt'] = pd.to_datetime(mh['rcept_dt'])
+        mh = mh[(mh['dt'] <= t) & (mh['dt'] > t - pd.Timedelta(days=90)) & mh['flr_nm'].fillna('').str.contains(RX.FOREIGN)]
+        d['major_foreign90'] = mh['stock_code'].value_counts().reindex(cand).fillna(0)
+    except Exception:
+        d['major_foreign90'] = np.nan
     pr = lambda x: (x.rank(pct=True) - 0.5).fillna(0)
-    d['score'] = sum(pr(d[k]) for k in ['low_vol', 'bp', 'roe', 'op_g', 'opm_chg', 'hi52']) - pr(d['r1rel']) - pr(d['val_surge'])
-    d = d[d['hi52'] > -30]          # 교집합 조건: 52주 고점 대비 -30% 이내(크게 무너진 종목 제외)
+    w = cfg['weights']
+    d['score'] = sum(v * pr(d[k]) if k in d else 0 for k, v in w.items())
+    if cfg.get('gate') == '영업이익증가':
+        d = d[d['op_g'] > 0]
+    elif cfg.get('gate', '').startswith('고점-30%'):
+        d = d[d['hi52'] > -30]
     d = d.sort_values('score', ascending=False)
+    capn = cfg.get('cap_per_sector')
+    keep, cnt = [], {}
+    for c, x in d.iterrows():
+        if capn and cnt.get(x['sector'], 0) >= capn:
+            continue
+        keep.append(c); cnt[x['sector']] = cnt.get(x['sector'], 0) + 1
+        if len(keep) >= n:
+            break
     rows = []
-    for c, x in d.head(n).iterrows():
-        f = fin.get(c, {})
+    for c in keep:
+        x = d.loc[c]
         why = []
         if pd.notna(x['op_g']):
             why.append(f"영업이익 전년비 {x['op_g'] * 100:+.0f}%")
-        elif pd.notna(f.get('opp')) and f['opp'] <= 0 and pd.notna(f.get('op')) and f['op'] > 0:
-            why.append('흑자전환')
         if pd.notna(x['opm_chg']):
             why.append(f"이익률 {x['opm_chg']:+.1f}%p")
         if pd.notna(x['roe']):
             why.append(f"ROE {x['roe']:.0f}%")
         if pd.notna(x['bp']) and x['bp'] > 0:
             why.append(f"PBR {1 / x['bp']:.1f}")
-        why.append(f"52주 고점 대비 {x['hi52']:+.0f}%, 변동성 {-x['low_vol']:.0f}%")
+        tail = f"52주 고점 대비 {x['hi52']:+.0f}%, 1개월 {x['r1']:+.0f}%"
+        if x.get('major_foreign90', 0) and x['major_foreign90'] > 0:
+            tail += f", 외국계 5% 공시 {int(x['major_foreign90'])}건(90일)"
         rows.append({'name': W['name'].get(c, c), 'code': c, 'sector': x['sector'], 'stage': x['stage'],
-                     'type': 'A' if x['stage'] == '초기' else 'B', 'close': C.close[c].iloc[i], 'r1': x['r1'],
-                     'why': [', '.join(why[:-1]), why[-1]] if len(why) > 1 else why, 'score': x['score']})
-    return {'rows': rows, 'reg': reg, 'n': n, 'n_cand': len(d), 'stages': st, 'asof': t}
+                     'type': 'B' if x['stage'] == '주도' else 'H', 'close': C.close[c].iloc[i], 'r1': x['r1'],
+                     'why': [', '.join(why), tail], 'score': x['score']})
+    return {'rows': rows, 'reg': reg, 'n': n, 'n_cand': len(d), 'stages': st, 'asof': t, 'cfg': cfg}
 
 
 def onepage2(asof, reg, fg, mf, sp, wat):
-    tn = {'A': '초기 섹터', 'B': '주도 섹터', '-': ''}
+    tn = {'A': '초기 섹터', 'B': '주도 섹터', 'H': '강세(과열 주의) 섹터', '-': ''}
     h = [f"<h1>오늘의 종목</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준 · 로직 {SIM_LOGIC_V2['name']}</div>"]
     k = reg['idx_rows'][0]
     fgs = f", 공포·탐욕 {fg['now']:.0f}" if not np.isnan(fg['now']) else ''
@@ -1051,13 +1101,17 @@ def onepage2(asof, reg, fg, mf, sp, wat):
         ch.append(f"코스피 외국인 오늘 {fk['d1']:+,.0f}억, 20일 {fk['d20']:+,.0f}억")
     if ch:
         h.append("<div style='margin-top:6px'><b>오늘 달라진 점</b><br>" + '<br>'.join('· ' + c for c in ch[:3]) + "</div>")
-    h.append("<div class=box style='margin-top:10px;font-size:8.5pt'><b>고르는 순서(v2)</b><br>"
-             "① 시장 국면(코스피 200일선·60일선 위 종목 비율·변동성지수)으로 개수: 위험선호 7 / 중립 6 / 위험회피 5<br>"
-             "② 섹터: 섹터 지수의 1·3·6개월 코스피 대비 수익률과 60·120일선 위치로 주도·초기 판정, 그 안에서만 고름(시총 상위 1200·거래대금 상위 1500)<br>"
-             "③ 통과 조건: 52주 고점 대비 -30% 이내<br>"
-             "④ 종합 점수: 낮은 변동성, 저PBR, ROE, 영업이익 전년비, 영업이익률 개선, 52주 고점 근접을 같은 비중으로 더하고 섹터 대비 최근 1개월 급등·거래대금 급증은 감점<br>"
-             "⑤ 근거: 2011~2023 요소 성적표에서 해마다 꾸준했던 요소만 씀. 최근 급등·섹터 대비 강세는 이후 성과가 오히려 나빴음<br>"
-             f"<b>과거 시험</b>: {SIM_LOGIC_V2['hist']}. 외국인 수급은 자료를 다 받은 뒤 다시 시험</div>")
+    cfg = sp.get('cfg', {})
+    wl = cfg.get('weights', {})
+    plus = ', '.join(FEAT_NM.get(k, k) for k, v in wl.items() if v > 0)
+    minus = ', '.join(FEAT_NM.get(k, k) for k, v in wl.items() if v < 0)
+    h.append("<div class=box style='margin-top:10px;font-size:8.5pt'><b>고르는 순서(엔진 v2)</b><br>"
+             "① 시장 국면으로 개수: 위험선호 7 / 중립 6 / 위험회피 5<br>"
+             "② 섹터: 섹터 지수의 1·3·6개월 코스피 대비 수익률과 60·120일선 위치로 강한 섹터(주도·과열 주의)만. 과거 시험에서 강한 섹터가 이후에도 가장 강했음(과열 주의 판정 섹터 이후 6개월 +10.5%p)<br>"
+             "③ 교집합: 영업이익 전년비 증가 필수, 섹터당 최대 2종목<br>"
+             f"④ 종합 점수(같은 비중): 가점 {plus} / 감점 {minus}. 요소와 방향은 매일 새벽 그날까지 자료로 걷기식 규칙에 따라 다시 정함<br>"
+             "<b>과거 시험(전 과정 걷기식)</b>: 2016~2023 6개월 보유 시 후보군 동일가중 대비 +4.9%p, 8년 중 7년 플러스, 최악의 해 -0.1%p, 시총가중 대비 +3.4%p. "
+             "2024년 이후 +6.5%p지만 시총가중 대비는 -11.6%p(삼성전자·SK하이닉스 주도 장세). 비용 0.5% 차감</div>")
     return h
 
 
