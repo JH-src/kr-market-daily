@@ -78,5 +78,75 @@ def main():
     print(open(p).read())
 
 
+def walkforward(K=(3, 5)):
+    """주도 섹터 고르기 걷기식: 해마다 그 이전 자료의 기준별 섹터 정보계수만 보고(t값 2 이상·플러스인 해 70% 이상) 쓸 기준을 정해
+    그해 매월 말 섹터 점수 상위 K개를 고름. 이후 3·6개월 섹터 지수의 후보군 동일가중 대비. 지금 시점 섹터 순위도 저장."""
+    import json
+    s = build()
+    feats = [c for c in s.columns if c not in ('date', 'sector', 'n', 'stage', 'fwd63', 'fwd126') and not c.startswith('종합')]
+    ic = {}
+    for t, g in s.groupby('date'):
+        r = {}
+        for f in feats:
+            ok = g[f].notna() & g['fwd126'].notna()
+            r[f] = g.loc[ok, f].rank().corr(g.loc[ok, 'fwd126'].rank()) if ok.sum() >= 8 else np.nan
+        ic[t] = r
+    IC = pd.DataFrame(ic).T.sort_index()
+
+    def choose(Y):
+        tr = IC[IC.index <= pd.Timestamp(f'{Y - 1}-06-30')]
+        ann = tr.groupby(tr.index.year).mean()
+        w = {}
+        for f in feats:
+            a = ann[f].dropna()
+            if len(a) < 3 or a.std() == 0:
+                continue
+            t = a.mean() / a.std() * np.sqrt(len(a))
+            if t >= 1.5 and (a > 0).mean() >= 0.7:
+                w[f] = 1
+            elif t <= -1.5 and (a < 0).mean() >= 0.7:
+                w[f] = -1
+        return w
+
+    res, chosen = [], {}
+    for Y in range(2014, 2027):
+        w = choose(Y); chosen[Y] = w
+        if not w:
+            continue
+        for t, g in s[s['date'].dt.year == Y].groupby('date'):
+            sc = sum(v * g[f].rank(pct=True).fillna(0.5) for f, v in w.items())
+            g = g.assign(sc=sc).sort_values('sc', ascending=False)
+            r = {'date': t}
+            for k in K:
+                r[f'top{k}_63'] = g['fwd63'].head(k).mean(); r[f'top{k}_126'] = g['fwd126'].head(k).mean()
+            r['bottom5_126'] = g['fwd126'].tail(5).mean()
+            res.append(r)
+    m = pd.DataFrame(res).set_index('date')
+    ann = m.groupby(m.index.year).mean().round(2)
+    ann['쓴 기준'] = [', '.join(('' if v > 0 else '감점 ') + f for f, v in chosen[y].items()) for y in ann.index]
+    pre, post = m[m.index < '2024-01-01'], m[m.index >= '2024-01-01']
+    # 지금 순위(최신 판단일, 최신 기준)
+    w_now = choose(pd.Timestamp.today().year + 1)
+    last = s[s['date'] == s['date'].max()].copy()
+    last['sc'] = sum(v * last[f].rank(pct=True).fillna(0.5) for f, v in w_now.items()) if w_now else np.nan
+    last = last.sort_values('sc', ascending=False)
+    cur = {'asof': str(last['date'].max().date()), 'criteria': w_now,
+           'top': [{'sector': r.sector, 'score': round(float(r.sc), 3)} for r in last.head(10).itertuples()],
+           'table': last.head(12)[['sector', 'n', 'sc'] + list(w_now)].round(3).to_dict('records')}
+    json.dump(cur, open(os.path.join(ROOT, 'docs', 'sim', 'sector_current.json'), 'w'), ensure_ascii=False, indent=1, default=str)
+    p = os.path.join(ROOT, 'docs', 'sim', 'sector_wf.md')
+    with open(p, 'w', encoding='utf-8') as fh:
+        fh.write("# 주도 섹터 고르기 걷기식\n\n해마다 그 이전 자료로만 기준을 정해 그해 매월 말 섹터 점수 상위 K개를 고름. 섹터 지수의 후보군 동일가중 대비 3·6개월(%p).\n"
+                 "참고: 이 표의 '판단 시점'은 매월 말이며 그 달 판단에 쓴 자료(판단 후 성과)는 섞이지 않음. 판단 기준 후보는 섹터 판정 검증의 기준들.\n\n")
+        fh.write(f"2014~2023: 상위3 6개월 {pre['top3_126'].mean():+.2f}%p(플러스 해 {(ann.loc[ann.index < 2024, 'top3_126'] > 0).sum()}/{(ann.index < 2024).sum()}), 상위5 {pre['top5_126'].mean():+.2f}%p, 하위5 {pre['bottom5_126'].mean():+.2f}%p\n\n"
+                 f"2024년 이후: 상위3 {post['top3_126'].mean():+.2f}%p, 상위5 {post['top5_126'].mean():+.2f}%p, 하위5 {post['bottom5_126'].mean():+.2f}%p\n\n")
+        fh.write(ann.to_markdown() + "\n\n## 지금 섹터 순위(" + cur['asof'] + ")\n\n" + last.head(12)[['sector', 'n', 'sc'] + list(w_now)].round(3).to_markdown(index=False) + "\n")
+    print(open(p).read())
+
+
 if __name__ == '__main__':
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == 'wf':
+        walkforward()
+    else:
+        main()
