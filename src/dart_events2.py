@@ -1,6 +1,7 @@
 """요소 시험용 추가 공시 이벤트(2015년~, 이어받기): 자기주식 취득·신탁 결정(B), 단일판매·공급계약 체결(I001), 최대주주 등 장내매수(지분공시 D 아님) 제외.
 결과 data/dart/events_extra.csv (rcept_dt, stock_code, corp_name, kind, report_nm, rcept_no)."""
-import csv, os, re, sys, time
+import csv, os, re, sys, time, threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 sys.path.insert(0, os.path.dirname(__file__))
 import dart_fin as D
@@ -11,46 +12,54 @@ RULES = {
 }
 
 
+def window(key, ty, rules, s, e):
+    q = f"pblntf_ty={ty}" if len(ty) == 1 else f"pblntf_detail_ty={ty}"
+    rows, page = [], 1
+    while True:
+        d = D._get(f"https://opendart.fss.or.kr/api/list.json?crtfc_key={key}&bgn_de={s:%Y%m%d}&end_de={e:%Y%m%d}&{q}&page_no={page}&page_count=100")
+        if d.get('status') not in ('000', '013'):
+            return None
+        for x in d.get('list', []):
+            if not x.get('stock_code'):
+                continue
+            for kind, pat in rules:
+                if re.search(pat, x['report_nm']):
+                    rows.append({'rcept_dt': x['rcept_dt'], 'stock_code': x['stock_code'], 'corp_name': x['corp_name'],
+                                 'kind': kind, 'report_nm': x['report_nm'].strip(), 'rcept_no': x['rcept_no']}); break
+        if page >= int(d.get('total_page', 1) or 1):
+            return rows
+        page += 1
+
+
 def main(y0=2015):
+    """창(80일)마다 따로 받아 창별 파일로 저장(병렬·이어받기), 끝에 하나로 합침."""
     key = os.environ['DART_KEY']
-    p = os.path.join(D.OUT, 'events_extra.csv')
-    seen = {r['rcept_no'] for r in csv.DictReader(open(p, encoding='utf-8'))} if os.path.exists(p) else set()
-    dp = os.path.join(D.OUT, 'events_extra_done.txt')
-    done = set(open(dp).read().split()) if os.path.exists(dp) else set()
-    f = open(p, 'a', newline='', encoding='utf-8')
-    w = csv.DictWriter(f, ['rcept_dt', 'stock_code', 'corp_name', 'kind', 'report_nm', 'rcept_no'])
-    if not seen:
-        w.writeheader()
+    tmp = os.path.join(D.OUT, 'events_extra_parts'); os.makedirs(tmp, exist_ok=True)
+    jobs = []
     for ty, rules in RULES.items():
-        q = f"pblntf_ty={ty}" if len(ty) == 1 else f"pblntf_detail_ty={ty}"
         s = date(y0, 1, 1)
         while s < date.today():
             e = min(s + timedelta(days=80), date.today())
-            tag = f"{ty}_{s:%Y%m%d}"
-            if tag not in done:
-                page, ok = 1, True
-                while True:
-                    d = D._get(f"https://opendart.fss.or.kr/api/list.json?crtfc_key={key}&bgn_de={s:%Y%m%d}&end_de={e:%Y%m%d}&{q}&page_no={page}&page_count=100")
-                    if d.get('status') not in ('000', '013'):
-                        print('목록 실패', tag, page, d.get('status'), d.get('message'), flush=True); ok = False; break
-                    for x in d.get('list', []):
-                        if not x.get('stock_code') or x['rcept_no'] in seen:
-                            continue
-                        nm = x['report_nm']
-                        for kind, pat in rules:
-                            if re.search(pat, nm):
-                                w.writerow({'rcept_dt': x['rcept_dt'], 'stock_code': x['stock_code'], 'corp_name': x['corp_name'],
-                                            'kind': kind, 'report_nm': nm.strip(), 'rcept_no': x['rcept_no']})
-                                seen.add(x['rcept_no']); break
-                    if page >= int(d.get('total_page', 1) or 1):
-                        break
-                    page += 1
-                f.flush()
-                if ok:
-                    open(dp, 'a').write(tag + '\n')
-                print(tag, len(seen), flush=True)
+            if not os.path.exists(os.path.join(tmp, f"{ty}_{s:%Y%m%d}.csv")):
+                jobs.append((ty, rules, s, e))
             s = e + timedelta(days=1)
-    f.close(); print('ALL_DONE')
+    print('남은 창', len(jobs), flush=True)
+    def one(j):
+        ty, rules, s, e = j
+        rows = window(key, ty, rules, s, e)
+        if rows is None:
+            print('실패', ty, s, flush=True); return
+        with open(os.path.join(tmp, f"{ty}_{s:%Y%m%d}.csv"), 'w', newline='', encoding='utf-8') as f:
+            w = csv.DictWriter(f, ['rcept_dt', 'stock_code', 'corp_name', 'kind', 'report_nm', 'rcept_no']); w.writeheader(); w.writerows(rows)
+        print(ty, s, len(rows), flush=True)
+    with ThreadPoolExecutor(4) as ex:
+        list(ex.map(one, jobs))
+    import glob
+    import pandas as pd
+    parts = [pd.read_csv(f, dtype=str) for f in sorted(glob.glob(os.path.join(tmp, '*.csv')))]
+    out = pd.concat(parts).drop_duplicates('rcept_no').sort_values('rcept_dt')
+    out.to_csv(os.path.join(D.OUT, 'events_extra.csv'), index=False)
+    print('ALL_DONE', len(out), out['kind'].value_counts().to_dict())
 
 
 if __name__ == '__main__':
