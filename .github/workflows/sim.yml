@@ -42,9 +42,10 @@ jobs:
           mkdir -p /tmp/newstate && cp sim_state/search_*_v2* /tmp/newstate/ 2>/dev/null || true
           cd src
           pip install -q tabulate 2>/dev/null || true
-          timeout 1200 python3 -m sim.factors > /tmp/factors.log 2>&1 || tail -5 /tmp/factors.log
+          timeout 1500 python3 -m sim.factors > /tmp/factors.log 2>&1 || tail -20 /tmp/factors.log
+          tail -3 /tmp/factors.log
           cp ../docs/sim/factors.md /tmp/factors.md 2>/dev/null || true
-          timeout 12000 python3 -m sim.search 11000 ${{ github.run_number }} || true
+          timeout 11500 python3 -m sim.search 9500 ${{ github.run_number }} || true
       - name: 결과 저장
         run: |
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"

@@ -212,7 +212,20 @@ def walk_forward(series, K=1, cov=0.5):
 STATE = os.environ.get('SIM_STATE', WORK)
 
 
+def save_csv(df, path):
+    # 저장 중 강제 종료돼도 기존 파일이 깨지지 않게: 임시 파일에 쓴 뒤 바꿔치기
+    tmp = path + '.tmp'
+    df.to_csv(tmp, index=False, compression='gzip' if path.endswith('.gz') else None)
+    os.replace(tmp, path)
+
+
 def save_series(series, path):
+    tmp = path[:-4] + '.tmp.npz'
+    _save_series(series, tmp)
+    os.replace(tmp, path)
+
+
+def _save_series(series, path):
     keys = list(series)
     months = sorted(set().union(*[set(series[k].index) for k in keys])) if keys else []
     arr = np.full((len(keys), len(months), 3), np.nan, dtype=np.float32)
@@ -262,12 +275,12 @@ def main(budget, seed):
         if len(p) >= 30:
             series[key] = monthly(p)
         if len(new) % 50 == 0:
-            pd.concat([done, pd.DataFrame(new)]).to_csv(rp, index=False)
+            save_csv(pd.concat([done, pd.DataFrame(new)]), rp)
             print(len(new), round(time.time() - t0), flush=True)
         if len(new) % 500 == 0:
             save_series(series, sp)
     allr = pd.concat([done, pd.DataFrame(new)], ignore_index=True)
-    allr.to_csv(rp, index=False); save_series(series, sp)
+    save_csv(allr, rp); save_series(series, sp)
     ok = allr.dropna(subset=['score']) if 'score' in allr else allr.iloc[0:0]
     wf = walk_forward(series)
     wfe = walk_forward(series, K=20)
