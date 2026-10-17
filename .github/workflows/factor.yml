@@ -33,6 +33,7 @@ jobs:
           python3 -m sim.factors > /tmp/f.log 2>&1 || tail -20 /tmp/f.log
           python3 -m sim.composite 2>&1 | tail -30
           python3 -m sim.composite holdout 2>&1 | tail -30
+          python3 -m sim.composite wf 2>&1 | tail -60
           cd ..
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
           git add docs/sim/factors.md docs/sim/composite*.md && git commit -q -m "요소 성적표·종합 점수 시험" || exit 0

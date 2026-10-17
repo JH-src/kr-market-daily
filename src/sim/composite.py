@@ -91,8 +91,76 @@ def main(N=6, a=None, b='2023-12-31', name='composite'):
 
 if __name__ == '__main__':
     import sys
-    if len(sys.argv) > 1 and sys.argv[1] == 'holdout':
+    if len(sys.argv) > 1 and sys.argv[1] == 'wf':
+        walkforward()
+    elif len(sys.argv) > 1 and sys.argv[1] == 'holdout':
         # 남겨 둔 2024년 이후 구간: 요소·조합을 고르는 데 쓰지 않은 기간에서 한 번 확인
         main(a='2024-01-01', b='2099-12-31', name='composite_holdout')
     else:
         main()
+
+
+def walkforward(N=6):
+    """걷기식: 해마다 그 이전 자료의 요소 성적(정보계수)만 보고 쓸 요소와 방향을 정해 그해에 적용.
+    요소 고르기 규칙(고정): 학습 기간 연도별 정보계수의 t값이 2 이상이고 플러스인 해가 70% 이상이면 +, 반대면 -(감점), 나머지는 안 씀.
+    2013년부터 남겨 둔 2024년 이후까지 전부 같은 규칙. 결과 docs/sim/composite_wf.md"""
+    d = S.panel('theme').copy()
+    if 'prsn20' in d and 'prsn20_cap' not in d:
+        d['prsn20_cap'] = d['prsn20'] / d['cap'] * 100
+    keys = [k for k in F if k not in ('sec_m3',)]
+    for k in keys:
+        try:
+            v = F[k][0](d)
+            d['_' + k] = pd.to_numeric(pd.Series(np.asarray(v, dtype=float) if v is not None else np.nan, index=d.index), errors='coerce')
+        except Exception:
+            d['_' + k] = np.nan
+    out = {}
+    for scope in ('전체', '주도·초기 섹터'):
+        dd = d if scope == '전체' else d[d['stage'].isin(['주도', '초기'])]
+        # 달별 정보계수(6개월)
+        ic = {}
+        for t, g in dd.groupby('date'):
+            r = {}
+            for k in keys:
+                x, y = g['_' + k], g['ex126']
+                ok = x.notna() & y.notna()
+                r[k] = x[ok].rank().corr(y[ok].rank()) if ok.sum() >= 30 and x[ok].nunique() >= 5 else np.nan
+            ic[t] = r
+        IC = pd.DataFrame(ic).T.sort_index()
+        res, chosen = [], {}
+        for Y in range(2013, 2027):
+            tr = IC[IC.index <= pd.Timestamp(f'{Y - 1}-06-30')]
+            ann = tr.groupby(tr.index.year).mean()
+            w = {}
+            for k in keys:
+                a = ann[k].dropna()
+                if len(a) < 3 or a.std() == 0:
+                    continue
+                tt = a.mean() / a.std() * np.sqrt(len(a))
+                if tt >= 2 and (a > 0).mean() >= 0.7:
+                    w[k] = 1
+                elif tt <= -2 and (a < 0).mean() >= 0.7:
+                    w[k] = -1
+            chosen[Y] = w
+            if not w:
+                continue
+            for t, g in dd[dd['date'].dt.year == Y].groupby('date'):
+                s = sum(v * zrank(g['_' + k]) for k, v in w.items())
+                top = g.loc[s.sort_values(ascending=False).index[:N]]
+                res.append({'date': t, 'ex63': top['ex63'].clip(-0.6, 1.5).mean() * 100, 'ex126': top['ex126'].clip(-0.6, 1.5).mean() * 100,
+                            'med': top['ex126'].median() * 100})
+        m = pd.DataFrame(res).set_index('date')
+        out[scope] = (m, chosen)
+    p = os.path.join(ROOT, 'docs', 'sim', 'composite_wf.md')
+    with open(p, 'w', encoding='utf-8') as f:
+        f.write("# 걷기식 종합 점수\n\n해마다 그 이전 자료의 요소 성적만으로 쓸 요소와 방향(+/감점)을 고정 규칙으로 정해 그해에 적용. 같은 비중, 매월 말 상위 "
+                f"{N}종목, 비용 0.5% 차감, 상위 700 동일가중 대비(%p). 2024년 이후도 같은 규칙.\n\n")
+        for scope, (m, chosen) in out.items():
+            a6 = m['ex126'].groupby(m.index.year).mean(); a3 = m['ex63'].groupby(m.index.year).mean()
+            md = m['med'].groupby(m.index.year).mean()
+            t = pd.DataFrame({'3개월': a3, '6개월': a6, '6개월 중위': md}).round(1)
+            t['쓴 요소'] = [', '.join(('' if v > 0 else '-') + k for k, v in chosen[y].items()) for y in t.index]
+            pre = m[m.index < '2024-01-01']; post = m[m.index >= '2024-01-01']
+            f.write(f"## {scope}\n\n2013~2023 평균 3개월 {pre['ex63'].mean():+.2f}%p, 6개월 {pre['ex126'].mean():+.2f}%p, 플러스 해 {(a6[a6.index < 2024] > 0).sum()}/{(a6.index < 2024).sum()} · "
+                    f"2024년 이후 3개월 {post['ex63'].mean():+.2f}%p, 6개월 {post['ex126'].mean():+.2f}%p\n\n" + t.to_markdown() + "\n\n")
+    print(open(p).read())
