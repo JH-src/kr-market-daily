@@ -32,6 +32,29 @@ def build():
         'fwd126': (g['sec126'].first() - g['mkt126'].first()) * 100,
     }).reset_index()
     s = s[s['n'] >= 5]
+    # 거래대금·낙폭(섹터 전체 종목 기준, 판단일까지 자료만)
+    from sim import data as Dm
+    W = Dm.prices()
+    sec = Dm.sectors('theme').reindex(W['val'].columns)
+    val, P = W['val'], W['adj']
+    v20 = val.rolling(20, min_periods=15).mean(); v120 = val.rolling(120, min_periods=90).mean()
+    tot20, tot120 = v20.sum(axis=1), v120.sum(axis=1)
+    hi60 = P.rolling(60, min_periods=40).max(); lo20 = P.rolling(20, min_periods=15).min()
+    extra = []
+    for t in s['date'].unique():
+        t = pd.Timestamp(t)
+        if t not in val.index:
+            continue
+        a20 = v20.loc[t].groupby(sec).sum(); a120 = v120.loc[t].groupby(sec).sum()
+        sh20 = a20 / tot20.loc[t] * 100; sh120 = a120 / tot120.loc[t] * 100
+        dd = (P.loc[t] / hi60.loc[t] - 1).groupby(sec).median() * 100
+        rb = (P.loc[t] / lo20.loc[t] - 1).groupby(sec).median() * 100
+        surge = (v20.loc[t] / v120.loc[t]).groupby(sec).median()
+        extra.append(pd.DataFrame({'date': t, '거래대금 비중': sh20, '거래대금 비중 변화': sh20 / sh120, '종목 거래대금 급증 중위': surge,
+                                   '60일 고점 대비 낙폭 중위': dd, '20일 저점 대비 반등 중위': rb}).rename_axis('sector').reset_index())
+    if extra:
+        s = s.merge(pd.concat(extra), on=['date', 'sector'], how='left')
+    s['종합(거래대금 비중 변화+신고가+이익)'] = s.groupby('date')[['거래대금 비중 변화', '신고가 근처 비율', '영업이익 증가 중위']].rank(pct=True).mean(axis=1)
     for c in s.columns:
         if c not in ('date', 'sector', 'stage'):
             s[c] = pd.to_numeric(s[c], errors='coerce')
