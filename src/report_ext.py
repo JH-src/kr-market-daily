@@ -369,41 +369,44 @@ def replay_section(px, asof):
     rp = pd.read_csv(p, dtype=str)
     if rp.empty:
         return []
-    cl = px[px['BAS_DD'] <= asof].pivot_table(index='BAS_DD', columns='ISU_CD', values='TDD_CLSPRC')
-    k = R.series_from('idx_kospi', 'IDX_NM', '코스피', 'CLSPRC_IDX')
-    k = k[k.index <= asof]
+    d0 = px[px['BAS_DD'] <= asof]
+    cl = d0.pivot_table(index='BAS_DD', columns='ISU_CD', values='TDD_CLSPRC')
+    cap = d0.pivot_table(index='BAS_DD', columns='ISU_CD', values='MKTCAP')
+    k = R.series_from('idx_kospi', 'IDX_NM', '코스피', 'CLSPRC_IDX').reindex(cl.index).ffill()
     res = []
-    for r in rp.itertuples():
-        t0 = pd.Timestamp(r.date)
-        if r.code not in cl.columns or t0 not in cl.index:
+    for d, g in rp.groupby('date'):
+        t = pd.Timestamp(d)
+        if t not in cl.index:
             continue
-        s = cl[r.code].loc[t0:].dropna()
-        ks = k.loc[t0:]
-        if len(s) < 2:
+        i = cl.index.get_loc(t)
+        if i + 1 >= len(cl):
             continue
-        # 다음 날 종가에 산 것으로(시뮬과 같은 기준), 63거래일 뒤 또는 오늘까지
-        b, kb = s.iloc[1] if len(s) > 1 else s.iloc[0], ks.iloc[1] if len(ks) > 1 else ks.iloc[0]
-        n = min(64, len(s)) - 1
-        e, ke = s.iloc[n], ks.iloc[min(n, len(ks) - 1)]
-        res.append({'date': r.date, 'name': r.name, 'sector': r.sector, 'full': len(s) > 64,
-                    'ret': (e / b - 1) * 100, 'kr': (ke / kb - 1) * 100})
+        j = min(i + 64, len(cl) - 1)          # 다음 날 종가 매수, 63거래일 뒤 또는 오늘
+        b, e = cl.iloc[i + 1], cl.iloc[j]
+        top = cap.iloc[i].rank(ascending=False) <= 700
+        ew = ((e / b - 1)[top]).replace([np.inf, -np.inf], np.nan).dropna().clip(-0.9, 5).mean() * 100
+        kr = (k.iloc[j] / k.iloc[i + 1] - 1) * 100
+        for r in g.itertuples():
+            if r.code in cl.columns and pd.notna(b.get(r.code)):
+                res.append({'date': d, 'name': r.name, 'full': i + 64 < len(cl), 'ret': (e[r.code] / b[r.code] - 1) * 100, 'kr': kr, 'ew': ew})
     df = pd.DataFrame(res)
     if df.empty:
         return []
-    df['ex'] = df['ret'] - df['kr']
+    df['xk'], df['xu'] = df['ret'] - df['kr'], df['ret'] - df['ew']
     f = df[df['full']]
     h = ["<h3>같은 로직으로 지난 1년 매주 골랐다면(재현)</h3>"]
     if len(f):
-        wk = f.groupby('date')['ex'].mean()
-        h.append(f"<div class=box>3개월이 지난 선정 {len(f)}건(주 {f['date'].nunique()}회): 코스피 대비 초과수익 평균 {f['ex'].mean():+.1f}%p, 중위 {f['ex'].median():+.1f}%p, "
-                 f"이긴 비율 {(f['ex'] > 0).mean() * 100:.0f}% / 주별 묶음으로 보면 이긴 주 {(wk > 0).mean() * 100:.0f}%. "
-                 f"상위 5건 빼면 평균 {f['ex'].sort_values().iloc[:-5].mean():+.1f}%p.</div>")
-    rec = df[~df['full']].sort_values('date', ascending=False)
+        h.append(f"<div class=box>3개월이 지난 선정 {len(f)}건({f['date'].min()[2:4]}.{f['date'].min()[4:6]}~{f['date'].max()[2:4]}.{f['date'].max()[4:6]} 매주): 평균 수익 {f['ret'].mean():+.1f}%<br>"
+                 f"· <b>시총 상위 700 동일가중 대비</b>(보통 종목 대비) 평균 {f['xu'].mean():+.1f}%p, 중위 {f['xu'].median():+.1f}%p, 이긴 비율 {(f['xu'] > 0).mean() * 100:.0f}%<br>"
+                 f"· <b>코스피 대비</b> 평균 {f['xk'].mean():+.1f}%p, 중위 {f['xk'].median():+.1f}%p, 이긴 비율 {(f['xk'] > 0).mean() * 100:.0f}%<br>"
+                 f"<span class=note>같은 기간 코스피 3개월 수익 평균 {f['kr'].mean():+.1f}%, 상위 700 동일가중 {f['ew'].mean():+.1f}%: 지수가 소수 대형주로 오른 장이라 중소형 위주 선정은 코스피를 크게 밑돎. "
+                 f"보통 종목보다는 조금 낫지만 중위가 마이너스라 소수 종목 성과에 기댐.</span></div>")
+    rec = df[~df['full']]
     if len(rec):
-        g = rec.groupby(['date']).agg(n=('name', 'size'), names=('name', lambda x: ', '.join(x)), ret=('ret', 'mean'), ex=('ex', 'mean')).sort_index(ascending=False).head(10)
-        h.append("<table><tr><th>선정일</th><th>종목</th><th class=r>오늘까지</th><th class=r>코스피 대비</th></tr>")
+        g = rec.groupby('date').agg(names=('name', lambda x: ', '.join(x)), ret=('ret', 'mean'), xu=('xu', 'mean'), xk=('xk', 'mean')).sort_index(ascending=False).head(10)
+        h.append("<table><tr><th>선정일</th><th>종목</th><th class=r>오늘까지</th><th class=r>동일가중 대비</th><th class=r>코스피 대비</th></tr>")
         for d, r in g.iterrows():
-            h.append(f"<tr><td>{d[2:4]}.{d[4:6]}.{d[6:]}</td><td>{r['names']}</td><td class=r>{R.color_pct(r['ret'])}</td><td class=r>{R.color_pct(r['ex'])}</td></tr>")
+            h.append(f"<tr><td>{d[2:4]}.{d[4:6]}.{d[6:]}</td><td>{r['names']}</td><td class=r>{R.color_pct(r['ret'])}</td><td class=r>{R.color_pct(r['xu'])}</td><td class=r>{R.color_pct(r['xk'])}</td></tr>")
         h.append("</table>")
-    h.append("<div class=note>재현은 지금 로직과 그 시점까지 공시된 실적만으로 과거 매주 마지막 거래일에 골랐을 때의 결과. 다음 거래일 종가 매수, 3개월(63거래일) 보유 기준, 비용 미반영, 같은 종목이 여러 주 연속 뽑히면 매번 따로 셈. 실제 선정 기록과 다름.</div>")
+    h.append("<div class=note>재현은 지금 로직과 그 시점까지 공시된 실적만으로 과거 매주 마지막 거래일에 골랐을 때의 결과. 다음 거래일 종가 매수, 3개월(63거래일) 보유, 비용 미반영, 같은 종목이 여러 주 연속 뽑히면 매번 따로 셈. 실제 선정 기록과 다름.</div>")
     return h
