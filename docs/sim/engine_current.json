@@ -17,7 +17,8 @@
   "hi52": 1,
   "low_vol": 1,
   "val_surge": -1,
-  "major_foreign90": 1
+  "major_foreign90": 1,
+  "buyback90": 1
  },
  "desc": {
   "ry": "최근 분기 매출 전년비",
@@ -32,6 +33,7 @@
   "hi52": "52주 고점 근접",
   "low_vol": "낮은 변동성",
   "val_surge": "거래대금 급증",
-  "major_foreign90": "90일 내 외국계 5% 공시 건수"
+  "major_foreign90": "90일 내 외국계 5% 공시 건수",
+  "buyback90": "90일 내 자사주 취득 결정"
  }
 }
