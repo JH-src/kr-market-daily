@@ -476,3 +476,44 @@ def active_etf_section(asof):
 def etf_tags(code, hold, watch):
     nm = {v: k for k, v in watch.items()}
     return [f"{nm[e]} {w:.1f}%" for e, d in hold.items() for c, w in d.items() if c == code]
+
+
+def etf_money_stocks(asof, top=15):
+    """전체 주식형 ETF의 현재 보유 비중 × 최근 20일 설정·환매 금액 = ETF 자금이 사들인(판) 종목 추정. 보유는 오늘 스냅샷(상위 30)이라 과거 시험 불가."""
+    snap = sorted(glob.glob(os.path.join(DATA, 'kis', 'etf_all', '*.csv')))
+    if not snap:
+        return None
+    h = pd.read_csv(snap[-1], dtype=str)
+    h = h[h['code'].str.fullmatch(r'\d{6}', na=False)]
+    h['w'] = R.num(h['weight']).fillna(0) / 100
+    e = R.load('etf', ['BAS_DD', 'ISU_CD', 'TDD_CLSPRC', 'NAV', 'LIST_SHRS'])
+    e = e[e['ISU_CD'].isin(h['etf'].unique())].copy()
+    for c in ['TDD_CLSPRC', 'NAV', 'LIST_SHRS']:
+        e[c] = R.num(e[c])
+    e['BAS_DD'] = pd.to_datetime(e['BAS_DD'])
+    e = e[e['BAS_DD'] <= asof].sort_values(['ISU_CD', 'BAS_DD'])
+    nav = e['NAV'].where(e['NAV'] > 0, e['TDD_CLSPRC'])
+    e['flow'] = e.groupby('ISU_CD')['LIST_SHRS'].diff() * nav
+    last = e['BAS_DD'].max()
+    f20 = e[e['BAS_DD'] > last - pd.Timedelta(days=30)].groupby('ISU_CD')['flow'].sum() / 1e8
+    h['f20'] = h['etf'].map(f20).fillna(0)
+    h['buy'] = h['w'] * h['f20']
+    g = h.groupby(['code', 'name']).agg(etf_buy=('buy', 'sum'), n_etf=('etf', 'nunique')).reset_index()
+    return {'in': g.sort_values('etf_buy', ascending=False).head(top), 'out': g.sort_values('etf_buy').head(8), 'snap': os.path.basename(snap[-1])[:8]}
+
+
+def etf_money_section(asof):
+    try:
+        r = etf_money_stocks(asof)
+    except Exception as ex:
+        return [f"<div class=note>ETF 자금 흐름 종목 확인 불가({ex})</div>"]
+    if r is None:
+        return []
+    h = ["<h3>ETF 자금이 사들인 종목(최근 약 한 달, 추정)</h3><table><tr><th>순유입 상위</th><th class=r>추정 매수(억)</th><th class=r>보유 ETF 수</th><th>순유출 상위</th><th class=r>추정 매도(억)</th></tr>"]
+    a, b = r['in'].reset_index(drop=True), r['out'].reset_index(drop=True)
+    for k in range(max(len(a), len(b))):
+        x = a.iloc[k] if k < len(a) else None; y = b.iloc[k] if k < len(b) else None
+        h.append("<tr>" + (f"<td>{x['name']}</td><td class=r>{x['etf_buy']:+,.0f}</td><td class=r>{x['n_etf']}</td>" if x is not None else "<td></td><td></td><td></td>") +
+                 (f"<td>{y['name']}</td><td class=r>{y['etf_buy']:+,.0f}</td>" if y is not None else "<td></td><td></td>") + "</tr>")
+    h.append(f"</table><div class=note>주식형 ETF 393개의 현재 보유 비중(한국투자증권, {r['snap']} 기준 상위 30) × 각 ETF 최근 약 한 달 설정·환매 금액을 더한 추정치. 보유 이력이 없어 과거 시험은 못 했고 참고용.</div>")
+    return h

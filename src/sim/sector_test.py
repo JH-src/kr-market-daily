@@ -54,6 +54,13 @@ def build():
                                    '60일 고점 대비 낙폭 중위': dd, '20일 저점 대비 반등 중위': rb}).rename_axis('sector').reset_index())
     if extra:
         s = s.merge(pd.concat(extra), on=['date', 'sector'], how='left')
+    try:
+        from sim import etf_flow
+        ef = etf_flow.build().rename(columns={'flow20_pct': '테마 ETF 20일 순유입(%)', 'flow60_pct': '테마 ETF 60일 순유입(%)', 'new_etf180': '6개월 신규 상장 테마 ETF 수'})
+        ef = ef.sort_values('date')
+        s = pd.merge_asof(s.sort_values('date'), ef, on='date', by='sector', direction='backward', tolerance=pd.Timedelta(days=5))
+    except Exception as ex:
+        print('테마 ETF 자금 흐름 생략', ex)
     s['종합(거래대금 비중 변화+신고가+이익)'] = s.groupby('date')[['거래대금 비중 변화', '신고가 근처 비율', '영업이익 증가 중위']].rank(pct=True).mean(axis=1)
     for c in s.columns:
         if c not in ('date', 'sector', 'stage', 'stage_ew'):
