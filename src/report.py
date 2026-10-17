@@ -1139,16 +1139,20 @@ def build(asof):
         h.append(f"<div class=note>조업일수 차이가 커서(이번 {wd[0]:.0f}일 vs 전년 {wd[1]:.0f}일) 단순 전년비는 왜곡돼 있습니다. 하루 평균 기준을 우선 보세요.</div>")
     h.append(f"<img src='{chart_exports(ex)}'>")
     if exi:
-        h.append(f"<h3>품목별 월 수출 ({exi['ym'][:4]}년 {int(exi['ym'][4:])}월 확정, 관세청 품목별 수출입실적)</h3>")
-        h.append("<table><tr><th>품목</th><th class=r>금액</th><th class=r>전년비</th><th class=r>전년비(하루 평균)</th><th class=r>전월비</th><th class=r>전월비(하루 평균)</th><th class=r>전분기비</th><th class=r>연초 누계</th><th class=r>누계 전년비</th><th class=r>누계(하루 평균)</th></tr>")
-        for r in exi['rows']:
-            h.append(f"<tr><td>{r['item']}</td><td class=r>{r['cur']:,.0f}</td><td class=r>{color_pct(r['yoy'],0)}</td><td class=r>{color_pct(r['dyoy'],0)}</td><td class=r>{color_pct(r['mom'],0)}</td><td class=r>{color_pct(r['dmom'],0)}</td>"
-                     f"<td class=r>{color_pct(r['qoq'],0)}</td><td class=r>{r['ytd']:,.0f}</td><td class=r>{color_pct(r['ytd_yoy'],0)}</td><td class=r>{color_pct(r['dytd'],0)}</td></tr>")
-        h.append("</table>")
-        tr = ' / '.join(f"{r['item']} " + ' '.join(fmt_pct(x, 0) for x in r['trend']) for r in exi['rows'])
-        h.append(f"<div class=note>단위 백만 달러. 전분기비는 {exi['q']} 기준. 조업일수는 거래소 개장일로 근사(이번 달 {exi['wd'][0]:.0f}일, 전년 같은 달 {exi['wd'][1]:.0f}일, 전월 {exi['wd'][2]:.0f}일). "
-                 f"품목 범위: 화장품 HS 3304(기초·색조 등), 라면 1902.30-1010, 김 마른김 1212.21 + 조미김 2008.99-5010, 전력용 변압기 8504.21~23. "
-                 f"올해 월별 전년비 흐름: {tr}</div>")
+        rows = exi['rows']
+        for r in rows:
+            r['grp'], r['nm'] = (r['item'].split('|', 1) + [''])[:2] if '|' in r['item'] else ('', r['item'])
+        hdr = "<tr><th>품목</th><th>분야</th><th class=r>금액</th><th class=r>전년비</th><th class=r>전년비(하루 평균)</th><th class=r>전월비(하루 평균)</th><th class=r>전분기비</th><th class=r>연초 누계 전년비(하루 평균)</th></tr>"
+        def line(r):
+            return (f"<tr><td>{r['nm']}</td><td class=mut>{r['grp']}</td><td class=r>{r['cur']:,.0f}</td><td class=r>{color_pct(r['yoy'],0)}</td><td class=r>{color_pct(r['dyoy'],0)}</td>"
+                    f"<td class=r>{color_pct(r['dmom'],0)}</td><td class=r>{color_pct(r['qoq'],0)}</td><td class=r>{color_pct(r['dytd'],0)}</td></tr>")
+        ym = f"{exi['ym'][:4]}년 {int(exi['ym'][4:])}월"
+        big = sorted([r for r in rows if pd.notna(r['cur'])], key=lambda r: -r['cur'])[:10]
+        h.append(f"<h3>주요 품목 수출 — 금액 상위 10 ({ym} 확정, 관세청 품목별 수출입실적)</h3><table>{hdr}" + ''.join(line(r) for r in big) + "</table>")
+        gr = sorted([r for r in rows if pd.notna(r['dyoy']) and r['cur'] >= 50], key=lambda r: -r['dyoy'])[:10]
+        h.append(f"<h3>주요 품목 수출 — 증가율 상위 10 (하루 평균 전년비, 월 5천만 달러 이상)</h3><table>{hdr}" + ''.join(line(r) for r in gr) + "</table>")
+        h.append(f"<div class=note>단위 백만 달러. 대상 {len(rows)}개 품목(반도체 세부·장비·소재, 2차전지·양극재, 자동차·선박, 방산·전력기기, 바이오·소비재 등, 목록은 config/export_items.json). "
+                 f"전분기비는 {exi['q']} 기준. 조업일수는 거래소 개장일로 근사(이번 달 {exi['wd'][0]:.0f}일, 전년 같은 달 {exi['wd'][1]:.0f}일, 전월 {exi['wd'][2]:.0f}일). 일부 품목은 상위 품목과 겹칩니다(예: 전력용 변압기는 변압기·정류기의 일부).</div>")
 
     # 4. 공시
     h.append(f"<h2>6. 공시 이벤트 ({ev['start']:%m/%d}~{ev['end']:%m/%d}, 유가·코스닥)</h2>")

@@ -148,30 +148,37 @@ def customs():
 
 def customs_items(years=10):
     """관세청 품목별 수출입실적(월). config/export_items.json의 품목을 HS 코드로 받아 합산 -> data/customs/items_monthly.csv"""
+    from concurrent.futures import ThreadPoolExecutor
     key = os.environ['DATA_GO_KEY']
     cfg = {k: v for k, v in json.load(open(os.path.join(ROOT, 'config', 'export_items.json'), encoding='utf-8')).items() if not k.startswith('_')}
     y = date.today().year
+    jobs = [(item, code, yy) for item, codes in cfg.items() for code in codes for yy in range(y - years + 1, y + 1)]
+
+    def fetch(job):
+        item, code, yy = job
+        u = 'https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList?' + urllib.parse.urlencode(
+            {'serviceKey': key, 'strtYymm': f'{yy}01', 'endYymm': f'{yy}12', 'hsSgn': code})
+        for i in range(6):
+            try:
+                x = urllib.request.urlopen(u, timeout=180).read().decode('utf-8', 'ignore')
+                if '<resultCode>00' in x:
+                    return job, x
+            except Exception:
+                pass
+            time.sleep(5 * (i + 1))
+        print('품목 실패', item, code, yy, flush=True)
+        return job, ''
+
     acc = {}
-    for item, codes in cfg.items():
-        for code in codes:
-            for yy in range(y - years + 1, y + 1):
-                u = 'https://apis.data.go.kr/1220000/Itemtrade/getItemtradeList?' + urllib.parse.urlencode(
-                    {'serviceKey': key, 'strtYymm': f'{yy}01', 'endYymm': f'{yy}12', 'hsSgn': code})
-                x = ''
-                for i in range(5):
-                    try:
-                        x = urllib.request.urlopen(u, timeout=120).read().decode('utf-8', 'ignore'); break
-                    except Exception:
-                        time.sleep(5 * (i + 1))
-                if '<resultCode>00' not in x:
-                    print('품목 실패', item, code, yy, x[:200]); continue
-                for it in re.findall(r'<item>(.*?)</item>', x, re.S):
-                    g = lambda t: (re.search(f'<{t}>(.*?)</{t}>', it) or [None, ''])[1].strip()
-                    hs, ym = g('hsCode'), g('year').replace('.', '')
-                    if not hs.startswith(code) or len(ym) != 6:
-                        continue   # 총계 행 제외
-                    k = (ym, item)
-                    acc[k] = acc.get(k, 0) + float(g('expDlr') or 0)
+    with ThreadPoolExecutor(4) as ex:
+        for (item, code, yy), x in ex.map(fetch, jobs):
+            for it in re.findall(r'<item>(.*?)</item>', x, re.S):
+                g = lambda t: (re.search(f'<{t}>(.*?)</{t}>', it) or [None, ''])[1].strip()
+                hs, ym = g('hsCode'), g('year').replace('.', '')
+                if not hs.startswith(code) or len(ym) != 6:
+                    continue   # 총계 행 제외
+                k = (ym, item)
+                acc[k] = acc.get(k, 0) + float(g('expDlr') or 0)
     rows = [{'yymm': ym, 'item': it, 'exp_usd': f'{v:.0f}'} for (ym, it), v in sorted(acc.items())]
     p = os.path.join(DATA, 'customs', 'items_monthly.csv')
     os.makedirs(os.path.dirname(p), exist_ok=True)
