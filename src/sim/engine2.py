@@ -16,7 +16,7 @@ from sim import search as S
 from sim.factors import F, ROOT
 
 N = 6
-SCOPES = ('전체', '주도·초기')
+SCOPES = ('전체', '주도·초기', '주도·과열', '섹터점수 상위5', '섹터점수 상위8')
 GATES = {
     '없음': lambda g: pd.Series(True, index=g.index),
     '고점-30%이내': lambda g: g['_hi52'] > -30,
@@ -43,6 +43,14 @@ def load():
         except Exception:
             d['_' + k] = np.nan
     keys = [k for k in keys if d['_' + k].notna().mean() > 0.05]
+    # 섹터 점수(섹터 판정 검증에서 꾸준했던 것): 섹터 안 영업이익 증가 중위·이익률 개선 중위·신고가 근처 비율의 섹터 간 순위 평균
+    d['_near_hi'] = (d['_hi52'] > -10).astype(float)
+    sg = d[d['sector'].notna() & (d['sector'] != '기타')].groupby(['date', 'sector']).agg(
+        n=('code', 'size'), opg=('_op_g', 'median'), opm=('_opm_chg', 'median'), nh=('_near_hi', 'mean')).reset_index()
+    sg = sg[sg['n'] >= 5]
+    sg['sec_score'] = sg.groupby('date')[['opg', 'opm', 'nh']].rank(pct=True).mean(axis=1)
+    sg['sec_rank'] = sg.groupby('date')['sec_score'].rank(ascending=False)
+    d = d.merge(sg[['date', 'sector', 'sec_rank']], on=['date', 'sector'], how='left')
     # 시가총액 가중 기준선(후보군 전체)
     for h in (63, 126):
         cw = d.groupby('date').apply(lambda g: (g['cap'] * g[f'ret{h}']).sum() / g['cap'][g[f'ret{h}'].notna()].sum())
@@ -94,14 +102,28 @@ def pick_month(g, w, gate, cap_per_sector):
     return g.loc[out]
 
 
+def scope_df(d, sc):
+    if sc == '전체':
+        return d
+    if sc == '주도·초기':
+        return d[d['stage'].isin(['주도', '초기'])]
+    if sc == '주도·과열':
+        return d[d['stage'].isin(['주도', '과열 주의'])]
+    if sc == '섹터점수 상위5':
+        return d[d['sec_rank'] <= 5]
+    if sc == '섹터점수 상위8':
+        return d[d['sec_rank'] <= 8]
+    return d
+
+
 def run():
     d, keys = load()
     years = range(2013, 2027)
-    ICs = {sc: monthly_ic(d if sc == '전체' else d[d['stage'].isin(['주도', '초기'])], keys) for sc in SCOPES}
+    ICs = {sc: monthly_ic(scope_df(d, sc), keys) for sc in SCOPES}
     W = {sc: {Y: choose_weights(ICs[sc], Y) for Y in years} for sc in SCOPES}
     series = {}
     for sc in SCOPES:
-        dd = d if sc == '전체' else d[d['stage'].isin(['주도', '초기'])]
+        dd = scope_df(d, sc)
         for gate in GATES:
             for cp in CAPS:
                 name = f"{sc}|{gate}|{'섹터당2' if cp else '제한없음'}"
@@ -196,7 +218,7 @@ def write(d, keys, W, series, M, picks):
     sc = {k: v for k, v in sc.items() if pd.notna(v)}
     best = FIXED
     scope, gate, cp = best.split('|')
-    ICs = monthly_ic(d if scope == '전체' else d[d['stage'].isin(['주도', '초기'])], keys)
+    ICs = monthly_ic(scope_df(d, scope), keys)
     w = choose_weights(ICs, Y + 1)    # 지금까지 자료 전부
     cur = {'asof': str(pd.Timestamp.today().date()), 'variant': best, 'scope': scope, 'gate': gate, 'cap_per_sector': 2 if cp == '섹터당2' else None,
            'weights': w, 'desc': {k: F[k][1] for k in w}}
