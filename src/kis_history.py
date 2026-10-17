@@ -25,12 +25,16 @@ def throttle(rate=15):
 
 
 def one(tok, code, today):
-    rows, d = {}, today
+    rows, d, err = {}, today, 0
     for _ in range(150):
         throttle()
         r = K.call(tok, Q + 'investor-trade-by-stock-daily', 'FHPTJ04160001',
                    {'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': code, 'FID_INPUT_DATE_1': d, 'FID_ORG_ADJ_PRC': '', 'FID_ETC_CLS_CODE': ''})
-        if r.get('http_error'):
+        if r.get('http_error') or (r.get('rt_cd') not in (None, '0')):
+            # 초당 건수 초과 등 오류 응답은 빈 결과가 아님: 잠시 쉬고 다시
+            err += 1
+            if err > 6:
+                break
             time.sleep(2); continue
         out = [x for x in (r.get('output2') or []) if x.get('stck_bsop_date')]
         if not out:
@@ -57,7 +61,11 @@ def main(budget):
     dp = os.path.join(OUT, '_done.txt')
     done = set(open(dp).read().split()) if os.path.exists(dp) else set()
     codes = [c.strip() for c in open(os.path.join(ROOT, 'config', 'universe_kis.txt')) if c.strip() and c.strip() not in done]
-    print('남은 종목', len(codes), flush=True)
+    # 선정 종목은 먼저
+    lp = os.path.join(ROOT, 'data', 'picks', 'log.csv')
+    pri = set(l.split(',')[1] for l in open(lp).read().split()[1:]) if os.path.exists(lp) else set()
+    codes = [c for c in codes if c in pri] + [c for c in codes if c not in pri]
+    print('남은 종목', len(codes), '우선', len(pri & set(codes)), flush=True)
     tok = K.token()
     today = time.strftime('%Y%m%d', time.gmtime(time.time() + 9 * 3600))
     with ThreadPoolExecutor(6) as ex:
@@ -73,8 +81,9 @@ def main(budget):
                     c = futs.pop(f)
                     try:
                         code, k = f.result()
-                        with open(dp, 'a') as fh:
-                            fh.write(code + '\n')
+                        if k > 0:   # 받은 행이 있을 때만 완료 처리(오류로 빈 결과면 다음에 다시)
+                            with open(dp, 'a') as fh:
+                                fh.write(code + '\n')
                         n += 1
                         if n % 50 == 0:
                             print(n, code, k, round(time.time() - t0), flush=True)
