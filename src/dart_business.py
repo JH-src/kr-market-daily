@@ -26,8 +26,14 @@ KW = {
     '음식료': ['식품', '라면', '음료', '제과', '주류'],
     '통신장비': ['통신장비', '5G', '기지국', '광통신'],
     '인터넷·소프트웨어': ['플랫폼', '소프트웨어', '클라우드', 'SaaS', '인공지능'],
+    'PCB·기판': ['PCB', '인쇄회로기판', '패키지기판', 'FC-BGA', '연성회로기판', 'FPCB'],
+    '스마트폰부품': ['스마트폰', '카메라모듈', '폴더블', '힌지', '휴대폰'],
+    '수동부품': ['MLCC', '적층세라믹', '커패시터', '인덕터', '커넥터'],
+    '자동차전장': ['전장', '차량용', '자율주행', 'ADAS', '인포테인먼트'],
+    'RF·무선': ['RF', '안테나', '중계기', '무선통신', '레이더'],
 }
-OUT = os.path.join(D.OUT, 'business.csv')
+OUT = os.path.join(D.OUT, os.environ.get('BUS_OUT', 'business.csv'))
+ONLY = os.environ.get('BUS_ONLY', '')   # 쉼표 구분 종목코드 파일 경로(지정 시 그 종목만)
 
 
 def text_of(rcept):
@@ -70,6 +76,9 @@ def main():
     have = set()
     if os.path.exists(OUT):
         have = {r['stock_code'] for r in csv.DictReader(open(OUT, encoding='utf-8'))}
+    if ONLY:
+        keep = set(open(ONLY).read().split())
+        codes = [c for c in codes if c in keep]
     todo = [(c, cmap[c]) for c in codes if c in cmap and c not in have]
     cols = ['stock_code', 'rcept_no', 'len', 'summary'] + list(KW)
     f = open(OUT, 'a', newline='', encoding='utf-8')

@@ -56,6 +56,34 @@ def business_themes():
     return top[ok].map(BUS_MAP), b
 
 
+GENERIC = {'디스플레이·전자부품', '컴퓨터·통신장비', '전기장비', '의료·정밀기기', '기계', '기타'}
+END_MAP = {'반도체': '반도체 부품', '반도체장비': '반도체 장비', '반도체소재': '반도체 소재', '통신장비': '통신·RF', 'RF·무선': '통신·RF',
+           '디스플레이': '디스플레이', '2차전지': '2차전지', 'PCB·기판': 'PCB·기판', '스마트폰부품': '스마트폰 부품', '수동부품': '전자 수동부품',
+           '자동차전장': '자동차 전장·부품', '자동차': '자동차 전장·부품', '전력기기': '전력기기', '로봇': '로봇', '의료기기': '의료기기',
+           '방산': '방산·우주', '우주항공': '방산·우주', '조선': '조선', '원자력': '원자력'}
+
+
+def end_market(out):
+    """전자부품·기계처럼 넓은 분류에 남은 종목은 사업보고서 키워드로 주력 전방 산업(반도체·통신·디스플레이 등)을 붙인다."""
+    p = os.path.join(ROOT, 'data', 'dart', 'business_ext.csv')
+    if not os.path.exists(p):
+        return out
+    b = pd.read_csv(p, dtype={'stock_code': str}).drop_duplicates('stock_code', keep='last').set_index('stock_code')
+    cols = [c for c in END_MAP if c in b.columns]
+    for c in out.index:
+        if out[c] not in GENERIC or c not in b.index:
+            continue
+        r = b.loc[c, cols].fillna(0).astype(float)
+        # 같은 전방 산업 키워드는 합산
+        agg = {}
+        for k, v in r.items():
+            agg[END_MAP[k]] = agg.get(END_MAP[k], 0) + v
+        srt = sorted(agg.items(), key=lambda x: -x[1])
+        if srt and srt[0][1] >= 8 and (len(srt) == 1 or srt[0][1] >= srt[1][1]):
+            out[c] = srt[0][0]
+    return out
+
+
 def classify(ksic_sector, induty):
     """ksic_sector: 종목코드 -> 산업분류 기반 섹터, induty: 종목코드 -> KSIC 코드."""
     g = etf_themes()
@@ -85,4 +113,4 @@ def classify(ksic_sector, induty):
                 out[c] = '반도체 부품'
             else:
                 out[c] = '반도체 소자'
-    return out
+    return end_market(out)
