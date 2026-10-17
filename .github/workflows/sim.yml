@@ -1,11 +1,11 @@
 name: sim
-# 로직 자동 탐색·검증을 쉬지 않고 돌린다(토큰 미사용). 6시간마다 새로 시작해 누적 결과에 이어 붙인다.
+# 로직 자동 탐색·검증을 쉬지 않고 돌린다(토큰 미사용). 4시간마다 새로 시작해 누적 결과에 이어 붙인다.
 on:
   workflow_dispatch:
   push:
     paths: ['sim/trigger.txt']
   schedule:
-    - cron: '30 */6 * * *'
+    - cron: '15 */4 * * *'
 permissions:
   contents: write
 concurrency:
