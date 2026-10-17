@@ -2,6 +2,8 @@ name: factor
 # 요소 성적표·종합 점수 시험만 따로 빨리 돌린다(탐색과 별개).
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '40 20 * * *'   # 매일 새벽 5시 40분(한국): 새 자료로 요소 성적표·엔진 다시 계산
 permissions:
   contents: write
 concurrency:
@@ -10,7 +12,7 @@ concurrency:
 jobs:
   factor:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 200
     steps:
       - uses: actions/checkout@v4
       - name: 준비
@@ -35,7 +37,8 @@ jobs:
           python3 -m sim.composite 2>&1 | tail -30
           python3 -m sim.composite holdout 2>&1 | tail -30
           python3 -m sim.composite wf 2>&1 | tail -60
+          python3 -m sim.engine2 2>&1 | tail -80
           cd ..
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
-          git add docs/sim/factors.md docs/sim/composite*.md && git commit -q -m "요소 성적표·종합 점수 시험" || exit 0
+          git add docs/sim/factors.md docs/sim/composite*.md docs/sim/engine.md docs/sim/engine_current.json && git commit -q -m "요소 성적표·종합 점수 시험" || exit 0
           for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; sleep 5; done
