@@ -299,6 +299,12 @@ def pick_cards(sp, eb, px, asof):
             h.append("<div><b>관련 수출</b> " + ' / '.join(parts) + "</div>")
         else:
             h.append("<div><b>관련 수출</b> <span class=mut>연결된 수출 품목 없음</span></div>")
+        try:
+            _, hold, watch = active_etfs(asof)
+            tg = etf_tags(c, hold, watch)
+        except Exception:
+            tg = []
+        h.append("<div><b>액티브 ETF 보유</b> " + (', '.join(tg) if tg else '추적 ETF 상위 30 안에 없음') + "</div>")
         nw = _news(asof, c)
         if nw is None:
             h.append("<div><b>최근 기사</b> <span class=mut>확인 불가</span></div>")
@@ -410,3 +416,63 @@ def replay_section(px, asof):
         h.append("</table>")
     h.append("<div class=note>재현은 지금 로직과 그 시점까지 공시된 실적만으로 과거 매주 마지막 거래일에 골랐을 때의 결과. 다음 거래일 종가 매수, 3개월(63거래일) 보유, 비용 미반영, 같은 종목이 여러 주 연속 뽑히면 매번 따로 셈. 실제 선정 기록과 다름.</div>")
     return h
+
+
+# ---------------------------------------------------------------- 추적 액티브 ETF: 자금 유출입·보유 종목
+def active_etfs(asof):
+    watch = {k: v for k, v in json.load(open(os.path.join(ROOT, 'config', 'watch_etf.json'), encoding='utf-8')).items() if not k.startswith('_')}
+    e = R.load('etf', ['BAS_DD', 'ISU_CD', 'TDD_CLSPRC', 'NAV', 'LIST_SHRS', 'INVSTASST_NETASST_TOTAMT'])
+    e = e[e['ISU_CD'].isin(watch.values())].copy()
+    for c in ['TDD_CLSPRC', 'NAV', 'LIST_SHRS', 'INVSTASST_NETASST_TOTAMT']:
+        e[c] = R.num(e[c])
+    e['BAS_DD'] = pd.to_datetime(e['BAS_DD'])
+    e = e[e['BAS_DD'] <= asof].sort_values('BAS_DD')
+    # 보유 종목: 한투 추적 수집분(이전 수집일과 비교) 없으면 전체 ETF 구성 스냅샷
+    hold = {}
+    fs = sorted(glob.glob(os.path.join(DATA, 'kis', 'holdings', '*.csv')))
+    fs = [f for f in fs if os.path.basename(f)[:8] <= (asof + pd.Timedelta(days=1)).strftime('%Y%m%d')]
+    cur = pd.read_csv(fs[-1], dtype=str) if fs else pd.DataFrame(columns=['etf', 'code', 'name', 'weight'])
+    snap = sorted(glob.glob(os.path.join(DATA, 'kis', 'etf_all', '*.csv')))
+    alls = pd.read_csv(snap[-1], dtype=str) if snap else pd.DataFrame(columns=['etf', 'code', 'name', 'weight'])
+    out = []
+    for nm, code in watch.items():
+        g = e[e['ISU_CD'] == code]
+        r = {'name': nm, 'code': code}
+        if len(g) > 21:
+            nav = g['NAV'].where(g['NAV'] > 0, g['TDD_CLSPRC'])
+            flow = g['LIST_SHRS'].diff() * nav / 1e8          # 설정(+)·환매(-) 금액, 억원
+            aum = g['INVSTASST_NETASST_TOTAMT'].replace(0, np.nan).ffill().iloc[-1] / 1e8 if g['INVSTASST_NETASST_TOTAMT'].gt(0).any() else (g['LIST_SHRS'] * nav).iloc[-1] / 1e8
+            r.update({'aum': aum, 'f5': flow.tail(5).sum(), 'f20': flow.tail(20).sum(), 'f60': flow.tail(60).sum(),
+                      'r1': (g['TDD_CLSPRC'].iloc[-1] / g['TDD_CLSPRC'].iloc[-22] - 1) * 100, 'last': g['BAS_DD'].iloc[-1]})
+        h = cur[cur['etf'] == code] if 'etf' in cur else cur.iloc[0:0]
+        src = '한투 추적'
+        if h.empty:
+            h = alls[alls['etf'] == code]; src = '전체 ETF 구성 스냅샷'
+        h = h.assign(w=R.num(h['weight'])).sort_values('w', ascending=False)
+        h = h[h['code'].str.fullmatch(r'\d{6}', na=False)]
+        r['top'] = list(zip(h['name'].head(10), h['w'].head(10))); r['src'] = src
+        hold[code] = dict(zip(h['code'], h['w']))
+        out.append(r)
+    return out, hold, watch
+
+
+def active_etf_section(asof):
+    try:
+        rows, hold, watch = active_etfs(asof)
+    except Exception as ex:
+        return [f"<div class=note>추적 ETF 자료 확인 불가({ex})</div>"]
+    h = ["<h2>추적 액티브 ETF: 자금 흐름과 담은 종목</h2>",
+         "<table><tr><th>ETF</th><th class=r>순자산(억)</th><th class=r>설정·환매 5일</th><th class=r>20일</th><th class=r>60일</th><th class=r>1개월 수익</th><th>비중 상위</th></tr>"]
+    for r in rows:
+        if 'aum' not in r:
+            h.append(f"<tr><td>{r['name']}</td><td colspan=5 class=mut>거래소 자료 확인 불가</td><td>{', '.join(f'{n} {w:.1f}' for n, w in r['top'][:6])}</td></tr>"); continue
+        h.append(f"<tr><td>{r['name']}</td><td class=r>{r['aum']:,.0f}</td><td class=r>{r['f5']:+,.0f}</td><td class=r>{r['f20']:+,.0f}</td><td class=r>{r['f60']:+,.0f}</td>"
+                 f"<td class=r>{R.color_pct(r['r1'])}</td><td style='font-size:7.8pt'>{', '.join(f'{n} {w:.1f}' for n, w in r['top'][:6])}</td></tr>")
+    h.append("</table><div class=note>설정·환매는 상장좌수 변화 × 기준가(억원, +는 돈이 들어옴). 보유 비중은 한국투자증권 ETF 구성종목(상위 30까지). "
+             "보유 이력이 쌓이기 전이라 과거 시험에는 아직 못 넣고, 매일 수집해 편입·편출과 비중 변화를 쌓는 중.</div>")
+    return h
+
+
+def etf_tags(code, hold, watch):
+    nm = {v: k for k, v in watch.items()}
+    return [f"{nm[e]} {w:.1f}%" for e, d in hold.items() for c, w in d.items() if c == code]

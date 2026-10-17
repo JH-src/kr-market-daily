@@ -1089,6 +1089,7 @@ def build(asof):
     h += RX.track_section(px, asof)
     h += RX.replay_section(px, asof)
     h += RX.export_section(eb)
+    h += RX.active_etf_section(asof)
     prov = os.path.join(DATA, '_calendar', 'provisional_kis.txt')
     kis_day = os.path.exists(prov) and asof.strftime('%Y%m%d') in open(prov).read().split()
     sub = f"{asof:%Y년 %m월 %d일} 장 마감 기준"

@@ -109,6 +109,7 @@ def main():
     r = K.call(tok, Q + 'mktfunds', 'FHKST649100C0', {'FID_INPUT_DATE_1': ''})
     upsert(os.path.join(OUT, 'mktfunds.csv'), r.get('output') or [], 'bsop_date')
     codes = {x['code'] for x in rows if x['code'].isdigit() and len(x['code']) == 6}
+    codes |= set(watch.values())          # 추적 ETF 자체의 투자자별 매매도
     n = flows(tok, codes, today)
     print('done', today, len(rows), len(codes), n)
 
