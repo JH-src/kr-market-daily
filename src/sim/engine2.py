@@ -137,6 +137,25 @@ def run():
     return d, keys, W, series, M, picks
 
 
+FIXED = '주도·초기|고점-30%이내|제한없음'   # 원칙으로 고정: 섹터 먼저(주도·초기) + 크게 무너진 종목 제외. 변형을 해마다 바꾸면 오히려 흔들림
+
+
+def size_blend(d, base):
+    """대형주 장세 대응 시험: 직전 6개월 시총가중이 동일가중보다 앞섰으면 절반을 시총가중 지수(대형주 묶음)로 들고 감.
+    직전 6개월 값은 6개월 전 판단일의 실현 성과(판단 시점에 이미 알 수 있는 값)를 씀."""
+    g = d.groupby('date').agg(cw126=('cw126', 'first'), mkt126=('mkt126', 'first'))
+    g['size_gap'] = (g['cw126'] - g['mkt126']) * 100
+    past = g['size_gap'].shift(6)        # 월말 기준 6개월 전 판단분 = 지금 막 끝난 6개월
+    b = base.join(past.rename('size_prev'), how='left')
+    on = b['size_prev'] > 0
+    # 시총가중 묶음의 동일가중 대비 = cw - mkt, 시총가중 대비 = 0
+    idx_ex = g['size_gap'].reindex(b.index)
+    b['ex126_b'] = np.where(on, 0.5 * b['ex126'] + 0.5 * idx_ex, b['ex126'])
+    b['cw126_b'] = np.where(on, 0.5 * b['cw126'], b['cw126'])
+    b['on'] = on
+    return b
+
+
 def write(d, keys, W, series, M, picks):
     p = os.path.join(ROOT, 'docs', 'sim', 'engine.md')
     L = ["# 종목 선정 엔진 v2 (전 과정 걷기식)", "",
@@ -158,6 +177,16 @@ def write(d, keys, W, series, M, picks):
         rows.append({'변형': k, '16~23 6개월': v16['ex126'].mean(), '16~23 시총가중 대비': v16['cw126'].mean(), '플러스 해': f"{(ann > 0).sum()}/{len(ann)}",
                      '최악의 해': ann.min(), '24~ 6개월': v24['ex126'].mean(), '24~ 시총가중 대비': v24['cw126'].mean(), '평균 종목 수': v['n'].mean()})
     L += ["## 변형별(요소는 매년 걷기식으로 고름)", "", pd.DataFrame(rows).sort_values('16~23 6개월', ascending=False).round(2).to_markdown(index=False), ""]
+    fx = series.get(FIXED)
+    if fx is not None and len(fx):
+        b = size_blend(d, fx[fx.index >= '2016-01-01'])
+        a = b.groupby(b.index.year).agg(ex126=('ex126', 'mean'), cw126=('cw126', 'mean'), ex126_b=('ex126_b', 'mean'), cw126_b=('cw126_b', 'mean'), 대형주장세_달=('on', 'sum'))
+        pre, post = b[b.index < '2024-01-01'], b[b.index >= '2024-01-01']
+        L += [f"## 고정 변형({FIXED}) + 대형주 장세 섞기", "",
+              "요소는 해마다 걷기식으로 고르고, 변형은 원칙으로 고정. 섞기: 직전 6개월 시총가중이 동일가중보다 앞섰으면 절반을 시총가중 묶음으로.", "",
+              f"2016~2023 그대로: 동일가중 대비 {pre['ex126'].mean():+.2f}%p, 시총가중 대비 {pre['cw126'].mean():+.2f}%p / 섞기: {pre['ex126_b'].mean():+.2f}%p, {pre['cw126_b'].mean():+.2f}%p",
+              f"2024년 이후 그대로: {post['ex126'].mean():+.2f}%p, {post['cw126'].mean():+.2f}%p / 섞기: {post['ex126_b'].mean():+.2f}%p, {post['cw126_b'].mean():+.2f}%p", "",
+              a.round(2).to_markdown(), ""]
     L += ["## 해마다 고른 요소(주도·초기 범위)", ""] + [f"- {y}: " + ', '.join(('' if s > 0 else '감점 ') + F[k][1] for k, s in w.items()) for y, w in W['주도·초기'].items()]
     open(p, 'w', encoding='utf-8').write('\n'.join(L) + '\n')
     # 지금 쓸 설정: 올해 기준으로 다시 고름(최근 3년 변형 성과, 최신 요소)
@@ -165,7 +194,7 @@ def write(d, keys, W, series, M, picks):
     lo, hi = pd.Timestamp(f'{Y - 3}-07-01'), pd.Timestamp(f'{Y}-12-31')
     sc = {k: v.loc[(v.index >= lo) & (v.index <= hi), 'ex126'].mean() for k, v in series.items()}
     sc = {k: v for k, v in sc.items() if pd.notna(v)}
-    best = max(sc, key=sc.get) if sc else '주도·초기|없음|제한없음'
+    best = FIXED
     scope, gate, cp = best.split('|')
     ICs = monthly_ic(d if scope == '전체' else d[d['stage'].isin(['주도', '초기'])], keys)
     w = choose_weights(ICs, Y + 1)    # 지금까지 자료 전부
