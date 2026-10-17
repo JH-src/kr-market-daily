@@ -864,7 +864,7 @@ def onepage(asof, reg, sec, fg, mf, pk, wat):
         for x in pk['rows']:
             stop = f"{x['stop']:,.0f}<br><span class=mut>{(x['stop'] / x['close'] - 1) * 100:+.1f}%</span>"
             h.append(f"<tr><td style='white-space:nowrap'><b>{x['name']}</b><br><span class=mut>{x['sector']} · {x['close']:,.0f}원</span></td>"
-                     f"<td style='white-space:nowrap'>{tn[x['type']]}</td><td>{' / '.join(x['why'])}</td><td class=r>{stop}</td></tr>")
+                     f"<td style='white-space:nowrap'>{tn[x['type']]}</td><td>{x['why'][0] + '<br>' + ' / '.join(x['why'][1:]) if x['why'][0].startswith('<b>') else ' / '.join(x['why'])}</td><td class=r>{stop}</td></tr>")
         h.append("</table>")
     else:
         h.append("<div class=box>오늘은 기준을 모두 넘은 종목이 없습니다.</div>")
@@ -909,9 +909,14 @@ SIM_LOGIC = {'name': '잠정 r3-a', 'n_by_regime': {'위험선호': 7, '중립':
              'hist': '설계 구간(2016.6~2023) 같은 조건 통과 종목 전체: 시장 평균 대비 3개월 +1.9%p·6개월 +3.2%p(상위 5건 제외 +1.0/+1.9), 종목 중앙값은 마이너스, 이긴 비율 41~43%'}
 
 
+_CTX = {}
+
+
 def sim_picks(asof):
     from sim import engine as SE
-    C = SE.Ctx('theme')
+    if 'theme' not in _CTX:
+        _CTX['theme'] = SE.Ctx('theme')
+    C = _CTX['theme']
     t = C.dates[C.dates <= asof].max()
     i = C.dates.get_loc(t)
     L = dict(SE.BASE); L.update({'n_max': None, 'stop': False})
@@ -950,11 +955,15 @@ def onepage2(asof, reg, fg, mf, sp, wat):
     h.append(f"<div class=box><b>시장 {sp['reg']} → 신규 매수 최대 {sp['n']}종목</b><br><span class=note>코스피 {k['close']:,.0f}({fmt_pct(k['d1'])}), 200일선 대비 {fmt_pct(k['ma200'])}, 60일선 위 종목 {reg['breadth_last']:.0f}%{fgs}</span></div>")
     ld = sorted([(s, v) for s, v in sp['stages'].items() if v['stage'] in ('주도', '초기') and s != '기타'], key=lambda x: x[1]['stage'])
     h.append("<div style='margin:6px 0'><b>주도·초기 섹터</b> " + (' · '.join(f"{s}({v['stage']})" for s, v in ld) or '없음') + "</div>")
+    nf = os.path.join(DATA, 'news', f"{sp['asof']:%Y%m%d}.json")
+    one = json.load(open(nf)).get('_한줄', {}) if os.path.exists(nf) else {}
     if sp['rows']:
         h.append("<table><tr><th>종목</th><th>유형</th><th>근거</th><th class=r>1개월</th></tr>")
         for x in sp['rows']:
+            if one.get(x['code']) and not x['why'][0].startswith('<b>'):
+                x['why'] = [f"<b>{one[x['code']]}</b>"] + x['why']
             h.append(f"<tr><td style='white-space:nowrap'><b>{x['name']}</b><br><span class=mut>{x['sector']}({x['stage']}) · {x['close']:,.0f}원</span></td>"
-                     f"<td style='white-space:nowrap'>{tn.get(x['type'], '')}</td><td>{' / '.join(x['why'])}</td><td class=r>{color_pct(x['r1'])}</td></tr>")
+                     f"<td style='white-space:nowrap'>{tn.get(x['type'], '')}</td><td>{x['why'][0] + '<br>' + ' / '.join(x['why'][1:]) if x['why'][0].startswith('<b>') else ' / '.join(x['why'])}</td><td class=r>{color_pct(x['r1'])}</td></tr>")
         h.append("</table>")
         h.append(f"<div class=note>조건을 모두 통과한 후보 {sp['n_cand']}개 중 섹터 대비 3개월 강도 상위 {len(sp['rows'])}개.</div>")
     else:
@@ -1006,6 +1015,7 @@ def build(asof):
     RX.track_update(sp, asof)
     h += RX.pick_cards(sp, eb, px, asof)
     h += RX.track_section(px, asof)
+    h += RX.replay_section(px, asof)
     h += RX.export_section(eb)
     prov = os.path.join(DATA, '_calendar', 'provisional_kis.txt')
     kis_day = os.path.exists(prov) and asof.strftime('%Y%m%d') in open(prov).read().split()

@@ -122,12 +122,12 @@ def chart_export_groups(eb):
     col = [R.UP if x > eb['tot3'] else R.MUTED for x in g['g3']]
     ax.barh(range(len(g)), g['g3'], color=col, height=0.6)
     for i, (x, a) in enumerate(zip(g['g3'], g['amt3'])):
-        ax.text(x + (1 if x >= 0 else -1), i, f"{x:+.0f}% (${a / 1000:,.1f}십억)", va='center', ha='left' if x >= 0 else 'right', fontsize=7)
+        ax.text(max(x, 0) + 2, i, f"{x:+.0f}% (3개월 ${a / 1000:,.1f}십억)", va='center', ha='left', fontsize=7)
     ax.axvline(eb['tot3'], color=R.UP, lw=1, ls='--')
     ax.axvline(0, color=R.INK, lw=0.6)
     ax.set_yticks(range(len(g))); ax.set_yticklabels(g['grp'], fontsize=7.5)
     R.style_ax(ax); ax.grid(axis='y', visible=False)
-    ax.set_xlim(min(-10, g['g3'].min() - 15), g['g3'].max() * 1.45 + 10)
+    ax.set_xlim(min(-10, g['g3'].min() - 5), g['g3'].max() * 1.5 + 10)
     ax.set_title(f"묶음별 최근 3개월 수출 전년 대비(빨강: 전체 {eb['tot3']:+.0f}% 상회)", fontsize=8.5, loc='left', color=R.INK)
     return R.fig_b64(fig)
 
@@ -137,6 +137,7 @@ def export_section(eb):
         return ["<h2>수출 품목 비교</h2><div class=box>품목별 수출 자료 확인 불가</div>"]
     df = eb['items']
     beat = df[df['g3'] > eb['tot3']]
+    above = df[df['g3'] > eb['med3']]
     h = ["<h2>수출: 전체를 이기는 품목과 대표 기업</h2>",
          f"<div class=box><b>최근 3개월 전체 수출 {R.fmt_pct(eb['tot3'], 0)}, 41개 품목 중위 {R.fmt_pct(eb['med3'], 0)}. "
          f"전체보다 빨리 느는 품목 {len(beat)}개</b>: " + ', '.join(f"{r.item}({r.g3:+.0f}%)" for r in beat.itertuples()) + "</div>",
@@ -144,11 +145,11 @@ def export_section(eb):
          "<div class=note>진한 빨강: 전체 수출보다 높음 / 연한 빨강: 품목 중위보다만 높음 / 회색: 중위 이하. 150% 넘는 값은 잘라 그리고 숫자로 표시. "
          + (f"전년 기저가 작아(3개월 1억 달러 미만) 증가율에서 뺀 품목: {', '.join(df[df['g3'].isna()]['item'])}. " if df['g3'].isna().any() else '') +
          "묶음 합계는 다른 품목에 포함되는 하위 품목(대형 변압기, 전기 승용차, 열연·후판, 태양전지)을 빼고 더함. 3개월 합계는 같은 달끼리 비교라 조업일수 차이가 작음.</div>",
-         "<h3>전체를 이기는 품목의 대표 상장사(3개월 주가)</h3>",
-         "<table><tr><th>품목</th><th class=r>3개월 수출</th><th class=r>전년 대비</th><th>대표 기업(최근 3개월 주가)</th></tr>"]
-    for r in beat.itertuples():
+         "<h3>품목 중위보다 빨리 느는 품목과 대표 상장사(최근 3개월 주가)</h3>",
+         "<table><tr><th>품목</th><th class=r>3개월 수출</th><th class=r>전년 대비(▲ 전체 상회)</th><th>대표 기업(최근 3개월 주가)</th></tr>"]
+    for r in above.itertuples():
         reps = ', '.join(f"{n} {R.color_pct(x, 0)}" for n, x in r.reps) or '<span class=mut>확인 불가</span>'
-        h.append(f"<tr><td>{r.item}<br><span class=mut>{r.grp}</span></td><td class=r>${r.amt3:,.0f}백만</td><td class=r>{R.color_pct(r.g3, 0)}</td><td>{reps}</td></tr>")
+        h.append(f"<tr><td>{r.item}<br><span class=mut>{r.grp}</span></td><td class=r>${r.amt3:,.0f}백만</td><td class=r>{R.color_pct(r.g3, 0)}{' ▲' if r.g3 > eb['tot3'] else ''}</td><td>{reps}</td></tr>")
     h.append("</table><div class=note>대표 기업은 품목별로 미리 정해 둔 주요 상장사(config/export_map.json). 수출 실적이 그 기업 매출과 바로 같다는 뜻은 아님.</div>")
     return h
 
@@ -227,7 +228,8 @@ def _holders(code, asof, days=365):
     d['dt'] = pd.to_datetime(d['rcept_dt'])
     d = d[(d['dt'] <= asof) & (d['dt'] > asof - pd.Timedelta(days=days))]
     d = d[d['flr_nm'].fillna('').str.contains(FOREIGN)]
-    return [(r.rcept_dt, r.flr_nm) for r in d.sort_values('rcept_dt', ascending=False).itertuples()][:4]
+    g = d.groupby('flr_nm')['rcept_dt'].agg(['max', 'count']).sort_values('max', ascending=False)
+    return [(r['max'], n, r['count']) for n, r in g.iterrows()][:4]
 
 
 def _news(asof, code):
@@ -255,8 +257,12 @@ def pick_cards(sp, eb, px, asof):
     for x in sp['rows']:
         c = x['code']
         h.append(f"<h3>{x['name']} <span class=mut>({c}) · {x['sector']}({x['stage']}) · {tn.get(x['type'], '')}</span></h3>")
-        biz = _business(c)
-        h.append(f"<div><b>무엇을 하나</b> {biz or '<span class=mut>사업보고서 요약 확인 불가</span>'}</div>")
+        import biz_text
+        try:
+            biz, src = biz_text.summary(c)
+        except Exception:
+            biz, src = '', ''
+        h.append(f"<div><b>무엇을 하나</b> {biz + f' <span class=mut>({src})</span>' if biz else '<span class=mut>사업보고서 요약 확인 불가</span>'}</div>")
         q = _quarters(c)
         if len(q):
             cells = []
@@ -280,7 +286,7 @@ def pick_cards(sp, eb, px, asof):
         else:
             h.append("<div><b>수급</b> <span class=mut>확인 불가</span></div>")
         ho = _holders(c, asof)
-        h.append("<div><b>외국계·연금 5% 공시(1년)</b> " + (', '.join(f"{n}({d[2:4]}.{d[4:6]}.{d[6:]})" for d, n in ho) if ho else '없음') + "</div>")
+        h.append("<div><b>외국계·연금 5% 공시(1년)</b> " + (', '.join(f"{n} {k}건(최근 {d[2:4]}.{d[4:6]}.{d[6:]})" for d, n, k in ho) if ho else '없음') + "</div>")
         its = item_by_sec.get(c, []) + item_by_sec.get(x['sector'], [])
         if eb is not None and its:
             dfi = eb['items'].set_index('key')
@@ -353,4 +359,51 @@ def track_section(px, asof):
     if v:
         h.append(f"<div class=note>추적 {len(rows)}종목, 코스피 대비 초과수익 평균 {np.mean(v):+.1f}%p, 중위 {np.median(v):+.1f}%p, 이긴 비율 {np.mean(np.array(v) > 0) * 100:.0f}%. "
                  "선정 후 수익은 처음 선정된 날 종가 기준, 비용 미반영.</div>")
+    return h
+
+
+def replay_section(px, asof):
+    p = os.path.join(DATA, 'picks', 'replay.csv')
+    if not os.path.exists(p):
+        return []
+    rp = pd.read_csv(p, dtype=str)
+    if rp.empty:
+        return []
+    cl = px[px['BAS_DD'] <= asof].pivot_table(index='BAS_DD', columns='ISU_CD', values='TDD_CLSPRC')
+    k = R.series_from('idx_kospi', 'IDX_NM', '코스피', 'CLSPRC_IDX')
+    k = k[k.index <= asof]
+    res = []
+    for r in rp.itertuples():
+        t0 = pd.Timestamp(r.date)
+        if r.code not in cl.columns or t0 not in cl.index:
+            continue
+        s = cl[r.code].loc[t0:].dropna()
+        ks = k.loc[t0:]
+        if len(s) < 2:
+            continue
+        # 다음 날 종가에 산 것으로(시뮬과 같은 기준), 63거래일 뒤 또는 오늘까지
+        b, kb = s.iloc[1] if len(s) > 1 else s.iloc[0], ks.iloc[1] if len(ks) > 1 else ks.iloc[0]
+        n = min(64, len(s)) - 1
+        e, ke = s.iloc[n], ks.iloc[min(n, len(ks) - 1)]
+        res.append({'date': r.date, 'name': r.name, 'sector': r.sector, 'full': len(s) > 64,
+                    'ret': (e / b - 1) * 100, 'kr': (ke / kb - 1) * 100})
+    df = pd.DataFrame(res)
+    if df.empty:
+        return []
+    df['ex'] = df['ret'] - df['kr']
+    f = df[df['full']]
+    h = ["<h3>같은 로직으로 지난 1년 매주 골랐다면(재현)</h3>"]
+    if len(f):
+        wk = f.groupby('date')['ex'].mean()
+        h.append(f"<div class=box>3개월이 지난 선정 {len(f)}건(주 {f['date'].nunique()}회): 코스피 대비 초과수익 평균 {f['ex'].mean():+.1f}%p, 중위 {f['ex'].median():+.1f}%p, "
+                 f"이긴 비율 {(f['ex'] > 0).mean() * 100:.0f}% / 주별 묶음으로 보면 이긴 주 {(wk > 0).mean() * 100:.0f}%. "
+                 f"상위 5건 빼면 평균 {f['ex'].sort_values().iloc[:-5].mean():+.1f}%p.</div>")
+    rec = df[~df['full']].sort_values('date', ascending=False)
+    if len(rec):
+        g = rec.groupby(['date']).agg(n=('name', 'size'), names=('name', lambda x: ', '.join(x)), ret=('ret', 'mean'), ex=('ex', 'mean')).sort_index(ascending=False).head(10)
+        h.append("<table><tr><th>선정일</th><th>종목</th><th class=r>오늘까지</th><th class=r>코스피 대비</th></tr>")
+        for d, r in g.iterrows():
+            h.append(f"<tr><td>{d[2:4]}.{d[4:6]}.{d[6:]}</td><td>{r['names']}</td><td class=r>{R.color_pct(r['ret'])}</td><td class=r>{R.color_pct(r['ex'])}</td></tr>")
+        h.append("</table>")
+    h.append("<div class=note>재현은 지금 로직과 그 시점까지 공시된 실적만으로 과거 매주 마지막 거래일에 골랐을 때의 결과. 다음 거래일 종가 매수, 3개월(63거래일) 보유 기준, 비용 미반영, 같은 종목이 여러 주 연속 뽑히면 매번 따로 셈. 실제 선정 기록과 다름.</div>")
     return h
