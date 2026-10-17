@@ -56,7 +56,7 @@ def build():
         s = s.merge(pd.concat(extra), on=['date', 'sector'], how='left')
     s['종합(거래대금 비중 변화+신고가+이익)'] = s.groupby('date')[['거래대금 비중 변화', '신고가 근처 비율', '영업이익 증가 중위']].rank(pct=True).mean(axis=1)
     for c in s.columns:
-        if c not in ('date', 'sector', 'stage'):
+        if c not in ('date', 'sector', 'stage', 'stage_ew'):
             s[c] = pd.to_numeric(s[c], errors='coerce')
     s['종합(이익+신고가+수출)'] = s.groupby('date')[['영업이익 증가 중위', '신고가 근처 비율', '관련 수출 증가']].rank(pct=True).mean(axis=1)
     s['종합(이익+신고가+외국인)'] = s.groupby('date')[['영업이익 증가 중위', '신고가 근처 비율', '외국인 60일 유입']].rank(pct=True).mean(axis=1)
