@@ -28,6 +28,13 @@ jobs:
           python3 -m sim.enrich
           python3 -m sim.enrich_flows || echo "수급 지표 생략"
           python3 -m sim.enrich_extra || echo "추가 요소 생략"
+      - name: 섹터 판정 검증(먼저)
+        env:
+          SIM_CACHE: /tmp/simcache
+        run: |
+          cd src && python3 -m sim.sector_test 2>&1 | tail -60
+          cd .. && git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
+          git add docs/sim/sector_test.md && git commit -q -m "섹터 판정 검증" && (git pull --rebase -X theirs -q && git push) || true
       - name: 요소 성적표·종합 점수
         env:
           SIM_CACHE: /tmp/simcache
@@ -38,7 +45,8 @@ jobs:
           python3 -m sim.composite holdout 2>&1 | tail -30
           python3 -m sim.composite wf 2>&1 | tail -60
           python3 -m sim.engine2 2>&1 | tail -80
+          python3 -m sim.sector_test 2>&1 | tail -60
           cd ..
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
-          git add docs/sim/factors.md docs/sim/composite*.md docs/sim/engine.md docs/sim/engine_current.json && git commit -q -m "요소 성적표·종합 점수 시험" || exit 0
+          git add docs/sim/factors.md docs/sim/composite*.md docs/sim/engine.md docs/sim/engine_current.json docs/sim/sector_test.md && git commit -q -m "요소 성적표·종합 점수 시험" || exit 0
           for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; sleep 5; done
