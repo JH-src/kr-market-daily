@@ -62,8 +62,11 @@ def main(budget):
     done = set(open(dp).read().split()) if os.path.exists(dp) else set()
     codes = [c.strip() for c in open(os.path.join(ROOT, 'config', 'universe_kis.txt')) if c.strip() and c.strip() not in done]
     # 선정 종목은 먼저
-    lp = os.path.join(ROOT, 'data', 'picks', 'log.csv')
-    pri = set(l.split(',')[1] for l in open(lp).read().split()[1:]) if os.path.exists(lp) else set()
+    pri = set()
+    for f in ('log.csv', 'replay.csv'):
+        fp = os.path.join(ROOT, 'data', 'picks', f)
+        if os.path.exists(fp):
+            pri |= {r['code'] for r in csv.DictReader(open(fp, encoding='utf-8'))}
     codes = [c for c in codes if c in pri] + [c for c in codes if c not in pri]
     print('남은 종목', len(codes), '우선', len(pri & set(codes)), flush=True)
     tok = K.token()
