@@ -172,8 +172,10 @@ def sample(rng):
     return cfg
 
 
-def walk_forward(series):
-    """연도마다 그 이전(6개월 보유 겹침 제외) 달들의 성과로 최고 로직을 골라, 처음 보는 그해에 적용(행렬 계산)."""
+def walk_forward(series, K=1, cov=0.5):
+    """연도마다 그 이전(6개월 보유 겹침 제외) 달들의 성과로 로직을 골라, 처음 보는 그해에 적용(행렬 계산).
+    고르는 기준: 종목이 없던 달은 0(시장과 같음)으로 채운 3·6개월 평균. 학습 기간 중 절반 이상 달에 종목이 있어야 함.
+    K>1이면 상위 K개 로직의 평균(앙상블)."""
     if not series:
         return pd.DataFrame()
     keys = list(series)
@@ -193,14 +195,17 @@ def walk_forward(series):
         if tr.sum() == 0:
             continue
         cnt = np.sum(~np.isnan(A[:, tr, 1]), axis=1)
-        sc = (np.nanmean(A[:, tr, 0], axis=1) + np.nanmean(A[:, tr, 1], axis=1)) / 2 + 0.1 * (np.nanmean(A[:, tr, 2], axis=1) - 50)
-        sc[cnt < 18] = -np.inf
-        sc = np.where(np.isnan(sc), -np.inf, sc)
-        j = int(np.argmax(sc))
-        if not np.isfinite(sc[j]):
+        sc = (np.nan_to_num(A[:, tr, 0]).mean(1) + np.nan_to_num(A[:, tr, 1]).mean(1)) / 2
+        sc[(cnt < 18) | (cnt < cov * tr.sum())] = -np.inf
+        top = np.argsort(-sc)[:K]
+        top = top[np.isfinite(sc[top])]
+        if not len(top):
             continue
-        out.append({'year': y, 'chosen': keys[j], 'train_score': float(sc[j]), 'months': int(np.sum(~np.isnan(A[j, te, 1]))),
-                    'oos_ex63': float(np.nanmean(A[j, te, 0])), 'oos_ex126': float(np.nanmean(A[j, te, 1])), 'oos_hit126': float(np.nanmean(A[j, te, 2]))})
+        t0 = np.nan_to_num(np.nanmean(A[top][:, te, 0], 0)); t1 = np.nan_to_num(np.nanmean(A[top][:, te, 1], 0))
+        hh = np.nanmean(A[top][:, te, 2], 0)
+        out.append({'year': y, 'chosen': keys[top[0]] if K == 1 else f'상위 {len(top)}개 평균', 'train_score': float(sc[top[0]]),
+                    'months': int(np.sum(~np.isnan(A[top[0], te, 1]))),
+                    'oos_ex63': float(np.mean(t0)), 'oos_ex126': float(np.mean(t1)), 'oos_hit126': float(np.nanmean(hh))})
     return pd.DataFrame(out)
 
 
@@ -265,11 +270,12 @@ def main(budget, seed):
     allr.to_csv(rp, index=False); save_series(series, sp)
     ok = allr.dropna(subset=['score']) if 'score' in allr else allr.iloc[0:0]
     wf = walk_forward(series)
-    write_md(allr, ok, wf)
+    wfe = walk_forward(series, K=20)
+    write_md(allr, ok, wf, wfe)
     print('done', len(new), len(allr))
 
 
-def write_md(allr, ok, wf):
+def write_md(allr, ok, wf, wfe=None):
     cols = ['score', 'n', 'm63', 'm126', 'trim63', 'trim126', 'med126', 'hit63', 'hit126', 'idio126', 'stk126', 'secp126', 'h1_126', 'h2_126', 'ic126', 'ic_t126']
     top = ok.sort_values('score', ascending=False).head(15)
     if ok.empty:
@@ -278,7 +284,9 @@ def write_md(allr, ok, wf):
     md = ['# 로직 자동 탐색 요약', '', f'평가한 로직 수: {len(allr)} (설계 구간 2011~2023, 실적 요소는 2016년 이후만 존재, 매월 말 5~7종목, 비용 0.5% 차감, 2024년 이후 미사용)', '',
           '열: m=시장 평균 대비 월평균(%p), trim=상위 5건 제외, med=종목 중앙값, hit=시장 평균 이긴 비율(%), idio=베타 반영 종목 고유 몫, stk=섹터 대비 종목 몫, secp=섹터가 시장보다 더 간 몫, h1/h2=2011~17 / 2018~23, ic=로직 순위와 성과의 순위 상관(월평균), ic_t=그 t값', '',
           '## 걷기식 검증(그해 이전 자료로 고른 로직을 그해에 적용 = 정직한 성과)', '', wf.round(2).to_markdown(index=False) if len(wf) else '(없음)', '',
-          f"걷기식 평균: 3개월 {wf['oos_ex63'].mean():+.2f}%p, 6개월 {wf['oos_ex126'].mean():+.2f}%p, 6개월 이긴 비율 {wf['oos_hit126'].mean():.1f}%" if len(wf) else '', '',
+          f"걷기식 평균: 3개월 {wf['oos_ex63'].mean():+.2f}%p, 6개월 {wf['oos_ex126'].mean():+.2f}%p, 6개월 이긴 비율 {wf['oos_hit126'].mean():.1f}%, 6개월 플러스인 해 {(wf['oos_ex126'] > 0).sum()}/{len(wf)}" if len(wf) else '', '',
+          (f"상위 20개 로직 평균(앙상블) 걷기식: 3개월 {wfe['oos_ex63'].mean():+.2f}%p, 6개월 {wfe['oos_ex126'].mean():+.2f}%p, 6개월 플러스인 해 {(wfe['oos_ex126'] > 0).sum()}/{len(wfe)} · 연도별 6개월 " + ' '.join(f"{int(r.year) % 100}:{r.oos_ex126:+.1f}" for r in wfe.itertuples())) if wfe is not None and len(wfe) else '', '',
+          '종목이 없던 달은 0(시장과 같음)으로 계산. 로직을 많이 시험할수록 학습 구간 1등은 운으로 뽑힐 가능성이 커져, 걷기식 결과가 학습 성적보다 크게 낮은 것이 정상.', '',
           '## 기준 로직', '', base[cols + ['cfg']].round(2).to_markdown(index=False) if len(base) else '', '',
           '## 점수 상위 15', '', top[cols + ['cfg']].round(2).to_markdown(index=False)]
     open(os.path.join(ROOT, 'docs', 'sim', 'search.md'), 'w', encoding='utf-8').write('\n'.join(md))

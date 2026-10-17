@@ -13,7 +13,7 @@ def main(src, dst):
     r.to_csv(os.path.join(dst, 'search_results_v2.csv.gz'), index=False)
     S.save_series(s, os.path.join(dst, 'search_series_v2.npz'))
     ok = r.dropna(subset=['score']) if 'score' in r else r.iloc[0:0]
-    S.write_md(r, ok, S.walk_forward(s))
+    S.write_md(r, ok, S.walk_forward(s), S.walk_forward(s, K=20))
     print('merged', len(r), len(s))
 
 

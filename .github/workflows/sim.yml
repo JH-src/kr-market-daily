@@ -41,13 +41,16 @@ jobs:
         run: |
           mkdir -p /tmp/newstate && cp sim_state/search_*_v2* /tmp/newstate/ 2>/dev/null || true
           cd src
-          timeout 13000 python3 -m sim.search 12000 ${{ github.run_number }} || true
+          pip install -q tabulate 2>/dev/null || true
+          timeout 1200 python3 -m sim.factors > /tmp/factors.log 2>&1 || tail -5 /tmp/factors.log
+          cp ../docs/sim/factors.md /tmp/factors.md 2>/dev/null || true
+          timeout 12000 python3 -m sim.search 11000 ${{ github.run_number }} || true
       - name: 결과 저장
         run: |
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
           for i in 1 2 3 4 5; do
             git fetch -q origin main && git reset -q --hard origin/main
             (cd src && SIM_CACHE=/tmp/simcache python3 -m sim.merge_state /tmp/newstate ../sim_state)
-            git add sim_state docs/sim/search.md && git commit -q -m "로직 자동 탐색 누적 결과" || break
+            cp /tmp/factors.md docs/sim/factors.md 2>/dev/null || true; git add sim_state docs/sim/search.md docs/sim/factors.md && git commit -q -m "로직 자동 탐색 누적 결과" || break
             git push && break; sleep 10
           done
