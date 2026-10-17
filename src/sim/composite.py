@@ -17,6 +17,16 @@ SETS = {
 }
 
 
+# 교집합(반드시 통과해야 하는 문) + 통과한 종목 안에서 종합 점수 순
+GATES = {
+    '교집합: 실적 개선 + 과열 아님 → 6개 점수 순': lambda g: (g['_op_g'] > 0) & (g['_opm_chg'] > 0) & (g['_r1rel'].rank(pct=True) < 0.8) & (g['_val_surge'].rank(pct=True) < 0.8),
+    '교집합: 실적 개선 + 과열 아님 + 저변동 절반 + 고점 근접 절반 → 6개 점수 순': lambda g: (g['_op_g'] > 0) & (g['_opm_chg'] > 0) & (g['_r1rel'].rank(pct=True) < 0.8) & (g['_val_surge'].rank(pct=True) < 0.8) & (g['_low_vol'].rank(pct=True) >= 0.5) & (g['_hi52'].rank(pct=True) >= 0.5),
+    '교집합: 위 조건 + 외국인 60일 순매수': lambda g: (g['_op_g'] > 0) & (g['_opm_chg'] > 0) & (g['_r1rel'].rank(pct=True) < 0.8) & (g['_val_surge'].rank(pct=True) < 0.8) & (g['_low_vol'].rank(pct=True) >= 0.5) & (g['_hi52'].rank(pct=True) >= 0.5) & (g['_frgn60_cap'] > 0),
+}
+for k in GATES:
+    SETS[k] = ['low_vol', 'bp', 'roe', 'op_g', 'opm_chg', 'hi52']
+
+
 def zrank(x):
     r = x.rank(pct=True)
     return (r - 0.5).fillna(0)   # 값 없으면 중립
@@ -42,9 +52,14 @@ def main(N=6, a=None, b='2023-12-31', name='composite'):
                 if len(g) < 20:
                     continue
                 s = sum((-1 if f.startswith('-') else 1) * zrank(g['_' + f.lstrip('-')]) for f in fs)
+                if nm in GATES:
+                    ok = GATES[nm](g).fillna(False)
+                    s = s[ok]
+                    if s.empty:
+                        sc.append({'date': t, 'ex63': 0.0, 'ex126': 0.0, 'hit': np.nan, 'med': np.nan, 'n': 0}); continue
                 top = g.loc[s.sort_values(ascending=False).index[:N]]
                 sc.append({'date': t, 'ex63': top['ex63'].clip(-0.6, 1.5).mean() * 100, 'ex126': top['ex126'].clip(-0.6, 1.5).mean() * 100,
-                           'hit': (top['ex126'] > 0).mean() * 100, 'med': top['ex126'].median() * 100})
+                           'hit': (top['ex126'] > 0).mean() * 100, 'med': top['ex126'].median() * 100, 'n': len(top)})
             m = pd.DataFrame(sc).set_index('date')
             if m.empty:
                 continue
@@ -55,7 +70,7 @@ def main(N=6, a=None, b='2023-12-31', name='composite'):
             rows.append({'범위': scope, '조합': nm, '3개월': m['ex63'].mean(), '6개월': m['ex126'].mean(), '6개월 중위': m['med'].mean(),
                          '이긴 비율': m['hit'].mean(), '플러스 해': f"{(ann > 0).sum()}/{len(ann)}",
                          '16~23 6개월': m16['ex126'].mean(), '16~23 플러스 해': f"{(a16 > 0).sum()}/{len(a16)}",
-                         '최악의 해': ann.min()})
+                         '최악의 해': ann.min(), '평균 종목 수': m['n'].mean(), '빈 달': int((m['n'] == 0).sum())})
             yearly[f'{scope}|{nm}'] = ann
     o = pd.DataFrame(rows)
     y = pd.DataFrame(yearly).T.round(1)
