@@ -1,6 +1,9 @@
 name: kis-history
 on:
   workflow_dispatch:
+    inputs:
+      budget:
+        default: '18000'
   push:
     paths: ['kis/history_trigger.txt']
   schedule:
@@ -23,7 +26,7 @@ jobs:
         run: |
           n=$(python3 -c "import os;d=set(open('archive/kis_flows/_done.txt').read().split()) if os.path.exists('archive/kis_flows/_done.txt') else set();print(sum(1 for c in open('config/universe_kis.txt') if c.strip() and c.strip() not in d))")
           echo "남은 종목 $n"
-          if [ "$n" -gt 0 ]; then cd src && timeout 18600 python3 kis_history.py 18000 || true; fi
+          if [ "$n" -gt 0 ]; then cd src && timeout 18600 python3 kis_history.py ${{ inputs.budget || '18000' }} || true; fi
       - name: 결과 저장
         run: |
           git config user.name "kis-bot"; git config user.email "kis-bot@users.noreply.github.com"

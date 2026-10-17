@@ -24,6 +24,9 @@ def throttle(rate=15):
         last[0] = time.time()
 
 
+ERRS = [0]
+
+
 def one(tok, code, today):
     rows, d, err = {}, today, 0
     for _ in range(150):
@@ -33,11 +36,17 @@ def one(tok, code, today):
         if r.get('http_error') or (r.get('rt_cd') not in (None, '0')):
             # 초당 건수 초과 등 오류 응답은 빈 결과가 아님: 잠시 쉬고 다시
             err += 1
+            if ERRS[0] < 8:
+                ERRS[0] += 1
+                print('오류 응답', code, r.get('http_error'), r.get('rt_cd'), r.get('msg_cd'), r.get('msg1'), str(r.get('body', ''))[:150], flush=True)
             if err > 6:
                 break
             time.sleep(2); continue
         out = [x for x in (r.get('output2') or []) if x.get('stck_bsop_date')]
         if not out:
+            if ERRS[0] < 8 and not rows:
+                ERRS[0] += 1
+                print('빈 응답', code, d, r.get('rt_cd'), r.get('msg_cd'), r.get('msg1'), list(r.keys()), flush=True)
             break
         for x in out:
             rows[x['stck_bsop_date']] = {v: x.get(k, '') for k, v in FLOW_COLS.items()}
