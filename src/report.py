@@ -905,6 +905,9 @@ def onepage(asof, reg, sec, fg, mf, pk, wat):
 
 
 # ---------------------------------------------------------------- 0'. 원페이지(시뮬레이션 검증 로직)
+SIM_LOGIC_V2 = {'name': 'v2', 'n_by_regime': {'위험선호': 7, '중립': 6, '위험회피': 5},
+                'hist': '2011~2023 매월 말 상위 6종목 6개월 보유: 시총 상위 700 동일가중 대비 평균 +3.7%p, 13년 중 10년 플러스, 최악의 해 -5.9%p. '
+                        '처음부터 남겨 둔 2024.01~2026.03 구간: +5.0%p(3개 해 중 2개 플러스). 비용 0.5% 차감. 중위 수익은 소폭 마이너스라 소수 종목 성과 비중이 큼'}
 SIM_LOGIC = {'name': '잠정 r3-a', 'n_by_regime': {'위험선호': 7, '중립': 6, '위험회피': 5},
              'hist': '설계 구간(2016.6~2023) 같은 조건 통과 종목 전체: 시장 평균 대비 3개월 +1.9%p·6개월 +3.2%p(상위 5건 제외 +1.0/+1.9), 종목 중앙값은 마이너스, 이긴 비율 41~43%'}
 
@@ -947,9 +950,78 @@ def sim_picks(asof):
     return {'rows': rows, 'reg': reg, 'n': n, 'n_cand': len(cand), 'stages': st, 'asof': t}
 
 
+def sim_picks_v2(asof):
+    """v2: 주도·초기 섹터 안에서 꾸준했던 요소 6개(낮은 변동성·저PBR·ROE·영업이익 증가·이익률 개선·52주 고점 근접)를
+    같은 비중으로 더하고 단기 과열(섹터 대비 1개월 급등·거래대금 급증)을 감점한 종합 점수 순."""
+    from sim import engine as SE
+    if 'theme' not in _CTX:
+        _CTX['theme'] = SE.Ctx('theme')
+    C = _CTX['theme']
+    t = C.dates[C.dates <= asof].max()
+    i = C.dates.get_loc(t)
+    W = C.W
+    cap = W['cap'].iloc[i]
+    ok = cap.notna() & C.close.iloc[i].notna()
+    cr = cap[ok].rank(ascending=False)
+    vr = C.val20.iloc[i][ok].rank(ascending=False)
+    uni = cr.index[(cr <= 1200) & (vr.reindex(cr.index) <= 1500)]
+    st = SE.sector_stage(C, i)
+    reg = SE.regime(C, i)
+    n = SIM_LOGIC_V2['n_by_regime'][reg]
+    cand = [c for c in uni if st.get(C.sec.get(c), {}).get('stage') in ('주도', '초기') and C.sec.get(c) != '기타']
+    if not cand:
+        return {'rows': [], 'reg': reg, 'n': n, 'n_cand': 0, 'stages': st, 'asof': t}
+    P = C.P.iloc[:i + 1][cand]
+    d = pd.DataFrame(index=cand)
+    d['sector'] = [C.sec.get(c) for c in cand]
+    d['stage'] = [st[s]['stage'] for s in d['sector']]
+    d['low_vol'] = -(W['ret'].iloc[i - 59:i + 1][cand].std() * np.sqrt(250) * 100)
+    d['hi52'] = (P.iloc[-1] / P.iloc[-252:].max() - 1) * 100
+    r1 = (P.iloc[-1] / P.iloc[-22] - 1) * 100
+    d['r1'] = r1
+    d['r1rel'] = r1 - pd.Series([st[s].get('m1', np.nan) for s in d['sector']], index=cand)
+    val = W['val']
+    d['val_surge'] = val.iloc[i - 19:i + 1][cand].mean() / val.iloc[i - 119:i + 1][cand].mean()
+    fin = SE.fin_at(C, t)
+    va = SE.value_at(C, t)
+    fq = C.fin[C.fin['avail'] <= t].groupby('stock_code').tail(1).set_index('stock_code')
+    fq = fq[(t - fq['avail']).dt.days <= 200]
+    opm = (fq['op'] / fq['rev'] - fq['op_py'] / fq['rev_py']) * 100
+    d['opm_chg'] = opm.reindex(cand)
+    d['op_g'] = [(fin[c]['op'] / fin[c]['opp'] - 1) if c in fin and pd.notna(fin[c]['opp']) and fin[c]['opp'] > 0 else np.nan for c in cand]
+    eq = pd.Series({c: va[c]['eq'] for c in cand if c in va}).reindex(cand)
+    ni = pd.Series({c: va[c]['ttm'] for c in cand if c in va}).reindex(cand)
+    pos = lambda x: x.where(x > 0)
+    d['bp'] = 1 / (cap.reindex(cand) / pos(eq))
+    d['roe'] = ni / pos(eq) * 100
+    d['cap'] = cap.reindex(cand)
+    pr = lambda x: (x.rank(pct=True) - 0.5).fillna(0)
+    d['score'] = sum(pr(d[k]) for k in ['low_vol', 'bp', 'roe', 'op_g', 'opm_chg', 'hi52']) - pr(d['r1rel']) - pr(d['val_surge'])
+    d = d.sort_values('score', ascending=False)
+    rows = []
+    for c, x in d.head(n).iterrows():
+        f = fin.get(c, {})
+        why = []
+        if pd.notna(x['op_g']):
+            why.append(f"영업이익 전년비 {x['op_g'] * 100:+.0f}%")
+        elif pd.notna(f.get('opp')) and f['opp'] <= 0 and pd.notna(f.get('op')) and f['op'] > 0:
+            why.append('흑자전환')
+        if pd.notna(x['opm_chg']):
+            why.append(f"이익률 {x['opm_chg']:+.1f}%p")
+        if pd.notna(x['roe']):
+            why.append(f"ROE {x['roe']:.0f}%")
+        if pd.notna(x['bp']) and x['bp'] > 0:
+            why.append(f"PBR {1 / x['bp']:.1f}")
+        why.append(f"52주 고점 대비 {x['hi52']:+.0f}%, 변동성 {-x['low_vol']:.0f}%")
+        rows.append({'name': W['name'].get(c, c), 'code': c, 'sector': x['sector'], 'stage': x['stage'],
+                     'type': 'A' if x['stage'] == '초기' else 'B', 'close': C.close[c].iloc[i], 'r1': x['r1'],
+                     'why': [', '.join(why[:-1]), why[-1]] if len(why) > 1 else why, 'score': x['score']})
+    return {'rows': rows, 'reg': reg, 'n': n, 'n_cand': len(d), 'stages': st, 'asof': t}
+
+
 def onepage2(asof, reg, fg, mf, sp, wat):
-    tn = {'A': '초기 섹터의 주도주', 'B': '주도 섹터의 차기주자', '-': ''}
-    h = [f"<h1>오늘의 종목</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준 · 로직 {SIM_LOGIC['name']}(검증 진행 중, 잠정)</div>"]
+    tn = {'A': '초기 섹터', 'B': '주도 섹터', '-': ''}
+    h = [f"<h1>오늘의 종목</h1><div class='sub'>{asof:%Y년 %m월 %d일} 장 마감 기준 · 로직 {SIM_LOGIC_V2['name']}</div>"]
     k = reg['idx_rows'][0]
     fgs = f", 공포·탐욕 {fg['now']:.0f}" if not np.isnan(fg['now']) else ''
     h.append(f"<div class=box><b>시장 {sp['reg']} → 신규 매수 최대 {sp['n']}종목</b><br><span class=note>코스피 {k['close']:,.0f}({fmt_pct(k['d1'])}), 200일선 대비 {fmt_pct(k['ma200'])}, 60일선 위 종목 {reg['breadth_last']:.0f}%{fgs}</span></div>")
@@ -965,7 +1037,7 @@ def onepage2(asof, reg, fg, mf, sp, wat):
             h.append(f"<tr><td style='white-space:nowrap'><b>{x['name']}</b><br><span class=mut>{x['sector']}({x['stage']}) · {x['close']:,.0f}원</span></td>"
                      f"<td style='white-space:nowrap'>{tn.get(x['type'], '')}</td><td>{x['why'][0] + '<br>' + ' / '.join(x['why'][1:]) if x['why'][0].startswith('<b>') else ' / '.join(x['why'])}</td><td class=r>{color_pct(x['r1'])}</td></tr>")
         h.append("</table>")
-        h.append(f"<div class=note>조건을 모두 통과한 후보 {sp['n_cand']}개 중 섹터 대비 3개월 강도 상위 {len(sp['rows'])}개.</div>")
+        h.append(f"<div class=note>주도·초기 섹터 후보 {sp['n_cand']}개 중 종합 점수 상위 {len(sp['rows'])}개.</div>")
     else:
         h.append("<div class=box>오늘은 조건을 모두 통과한 종목이 없습니다.</div>")
     ch = []
@@ -978,14 +1050,12 @@ def onepage2(asof, reg, fg, mf, sp, wat):
         ch.append(f"코스피 외국인 오늘 {fk['d1']:+,.0f}억, 20일 {fk['d20']:+,.0f}억")
     if ch:
         h.append("<div style='margin-top:6px'><b>오늘 달라진 점</b><br>" + '<br>'.join('· ' + c for c in ch[:3]) + "</div>")
-    h.append("<div class=box style='margin-top:10px;font-size:8.5pt'><b>고르는 순서</b><br>"
+    h.append("<div class=box style='margin-top:10px;font-size:8.5pt'><b>고르는 순서(v2)</b><br>"
              "① 시장 국면(코스피 200일선·60일선 위 종목 비율·변동성지수)으로 개수: 위험선호 7 / 중립 6 / 위험회피 5<br>"
-             "② 섹터: 산업분류로 묶은 섹터 지수의 1·3·6개월 코스피 대비 수익률과 60·120일선 위치로 주도·초기 판정, 그 안에서만 고름<br>"
-             "③ 유형: 초기 섹터에서 섹터보다 1·3개월 모두 강한 종목(초기 주도주) / 주도 섹터에서 1개월 덜 올랐지만 3개월 격차 15%p 이내·60일선 -5% 위(차기주자)<br>"
-             "④ 탈락: RSI 75 이상, 90일 내 유상증자·CB·BW 결정, 영업적자이면서 매출 감소<br>"
-             "⑤ 실적 상승세 필수: 공시된 최근 분기 매출 전년비 +10% 이상·직전 분기도 증가·영업이익 흑자이고 줄지 않음(DART)<br>"
-             "⑥ 통과 종목을 섹터 대비 3개월 강도 순으로. 시가총액 상위 700·거래대금 상위 1000 안에서<br>"
-             f"<b>과거 시험</b>: {SIM_LOGIC['hist']}. 성과가 소수 종목에 기대는 구조라 종목별 비중은 고르게, 로직은 밤사이 계속 시험·갱신 중</div>")
+             "② 섹터: 섹터 지수의 1·3·6개월 코스피 대비 수익률과 60·120일선 위치로 주도·초기 판정, 그 안에서만 고름(시총 상위 1200·거래대금 상위 1500)<br>"
+             "③ 종합 점수: 낮은 변동성, 저PBR, ROE, 영업이익 전년비, 영업이익률 개선, 52주 고점 근접을 같은 비중으로 더하고 섹터 대비 최근 1개월 급등·거래대금 급증은 감점<br>"
+             "④ 근거: 2011~2023 요소 성적표에서 해마다 꾸준했던 요소만 씀. 최근 급등·섹터 대비 강세는 이후 성과가 오히려 나빴음<br>"
+             f"<b>과거 시험</b>: {SIM_LOGIC_V2['hist']}. 외국인 수급은 자료를 다 받은 뒤 다시 시험</div>")
     return h
 
 
@@ -1005,7 +1075,7 @@ def build(asof):
     cand = candidates(px, asof, sec, mem, wat, bo)
     pk = picks(px, asof, sec, wat, reg)
     h = []
-    sp = sim_picks(asof)
+    sp = sim_picks_v2(asof)
     h += onepage2(asof, reg, fg, mf, sp, wat)
     import report_ext as RX
     try:

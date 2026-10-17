@@ -23,8 +23,16 @@ GATES = {
     '교집합: 실적 개선 + 과열 아님 + 저변동 절반 + 고점 근접 절반 → 6개 점수 순': lambda g: (g['_op_g'] > 0) & (g['_opm_chg'] > 0) & (g['_r1rel'].rank(pct=True) < 0.8) & (g['_val_surge'].rank(pct=True) < 0.8) & (g['_low_vol'].rank(pct=True) >= 0.5) & (g['_hi52'].rank(pct=True) >= 0.5),
     '교집합: 위 조건 + 외국인 60일 순매수': lambda g: (g['_op_g'] > 0) & (g['_opm_chg'] > 0) & (g['_r1rel'].rank(pct=True) < 0.8) & (g['_val_surge'].rank(pct=True) < 0.8) & (g['_low_vol'].rank(pct=True) >= 0.5) & (g['_hi52'].rank(pct=True) >= 0.5) & (g['_frgn60_cap'] > 0),
 }
+LIGHT = {
+    'v2 + 고점 -30% 이내': lambda g: g['_hi52'] > -30,
+    'v2 + 고점 -30% 이내 + 변동성 상위 30% 제외': lambda g: (g['_hi52'] > -30) & (g['_low_vol'].rank(pct=True) > 0.3),
+    'v2 + 영업이익 증가 필수': lambda g: (g['_op_g'] > 0),
+}
 for k in GATES:
     SETS[k] = ['low_vol', 'bp', 'roe', 'op_g', 'opm_chg', 'hi52']
+for k, fn in LIGHT.items():
+    GATES[k] = fn
+    SETS[k] = ['low_vol', 'bp', 'roe', 'op_g', 'opm_chg', 'hi52', '-r1rel', '-val_surge']
 
 
 def zrank(x):
