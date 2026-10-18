@@ -47,6 +47,8 @@ def main():
     if len(fx):
         fx = ttm_table(fx, ['ni'])
     for level in ('coarse', 'ksic3', 'theme'):
+        if not os.path.exists(os.path.join(WORK, f'panel_{level}.pkl')):
+            continue
         p = pickle.load(open(os.path.join(WORK, f'panel_{level}.pkl'), 'rb'))
         dates = sorted(p['date'].unique())
         feats = []

@@ -39,6 +39,8 @@ def main():
         mh['foreign'] = mh['flr_nm'].str.contains(FOREIGN, flags=re.I, regex=True, na=False)
         mh['nps'] = mh['flr_nm'].str.contains(NPS, na=False)
     for level in ('coarse', 'ksic3', 'theme'):
+        if not os.path.exists(os.path.join(WORK, f'panel_{level}_x.pkl')):
+            continue
         pth = os.path.join(WORK, f'panel_{level}_x.pkl')
         p = pickle.load(open(pth, 'rb'))
         p = p.drop(columns=[c for c in p.columns if c.startswith(('frgn', 'orgn', 'prsn', 'pension', 'fo_', 'major_'))], errors='ignore')
