@@ -1,0 +1,42 @@
+name: final-sim
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 17 * * *'   # 매일 02:30 KST, 수급 수집분 반영해 다시 검증
+permissions:
+  contents: write
+concurrency:
+  group: final-sim
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      SIM_CACHE: /tmp/simcache
+    steps:
+      - uses: actions/checkout@v4
+      - name: 준비
+        run: pip install -q pandas numpy tabulate
+      - name: 판단 재료 표(섹터 분류 수정 반영)
+        run: |
+          mkdir -p /tmp/simcache && cd src
+          python3 -c "from sim import data as D; D.prices(refresh=True)"
+          python3 -m sim.panel theme
+          python3 -m sim.enrich
+          python3 -m sim.enrich_flows || echo "수급 지표 생략"
+          python3 -m sim.enrich_extra || echo "추가 요소 생략"
+          python3 -m sim.enrich_sector
+      - name: 요소 성적표
+        run: cd src && (timeout 2400 python3 -m sim.factors > /tmp/f.log 2>&1 || tail -20 /tmp/f.log)
+      - name: 섹터 판정 완전 걷기식
+        run: cd src && (python3 -m sim.lead_wf stock 2>&1 | tail -3 || true)
+      - name: 엔진 v3 완전 걷기식
+        run: cd src && timeout 12000 python3 -m sim.engine3 2>&1 | tail -40
+      - name: 결과 저장
+        if: always()
+        run: |
+          git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
+          git add docs/sim/engine3* docs/sim/factors.md docs/sim/lead_wf_*.md docs/sim/lead_current_*.json 2>/dev/null
+          git commit -q -m "엔진 v3 완전 걷기식 결과" || exit 0
+          git pull --rebase -X theirs -q && git push

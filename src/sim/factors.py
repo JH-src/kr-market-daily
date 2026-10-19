@@ -36,6 +36,11 @@ F = {
     'buyback90': (lambda d: d.get('buyback90'), '90일 내 자사주 취득 결정'),
     'supply90': (lambda d: d.get('supply90'), '90일 내 단일판매·공급계약 공시'),
     'exp_g3': (lambda d: d.get('exp_g3'), '소속 섹터 관련 수출 3개월 전년비'),
+    'pension60_cap': (lambda d: d.get('pension60_cap'), '연기금 60일 순매수/시총'),
+    'fo60_cap': (lambda d: d.get('fo60_cap'), '외국인+기관 60일 순매수/시총'),
+    'frgn_hold_chg60': (lambda d: d.get('frgn_hold_chg60'), '외국인 보유비율 60일 변화(%p)'),
+    'rep_cap': (lambda d: -d['sec_cap_rank'] if 'sec_cap_rank' in d else np.nan, '섹터 안 시총 순위(대표성)'),
+    'rep_val': (lambda d: -d['sec_val_rank'] if 'sec_val_rank' in d else np.nan, '섹터 안 거래대금 순위(대표성)'),
 }
 
 
