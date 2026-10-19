@@ -1,0 +1,56 @@
+name: daily-search
+on:
+  workflow_dispatch:
+    inputs:
+      deadline:
+        description: '탐색 마감(UTC)'
+        default: '2026-10-19T19:55'
+permissions:
+  contents: write
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    env:
+      SIM_CACHE: /tmp/simcache
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q pandas numpy tabulate
+      - name: 판단 재료
+        run: |
+          mkdir -p /tmp/simcache && cd src
+          python3 -c "from sim import data as D; D.prices(refresh=True)"
+          python3 -m sim.panel theme
+          python3 -m sim.enrich
+          python3 -m sim.enrich_flows || echo "수급 생략"
+          python3 -m sim.enrich_extra || echo "추가 생략"
+      - name: 탐색
+        run: cd src && python3 -m sim.daily_search ${{ inputs.deadline }} ${{ matrix.shard }} 2>&1 | grep -v -i warn | tail -30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-${{ matrix.shard }}
+          path: /tmp/out/store_*.pkl
+          retention-days: 7
+  merge:
+    needs: search
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q pandas numpy tabulate
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/stores
+      - name: 합치기·걷기식
+        run: cd src && python3 -m sim.daily_search merge /tmp/stores 2>&1 | tail -30
+      - name: 결과 저장
+        run: |
+          git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
+          git add docs/sim/daily_search.md docs/sim/daily_methods.csv docs/sim/daily_current.json
+          git commit -q -m "매 영업일 경쟁 탐색 결과" || exit 0
+          for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; sleep 5; done
