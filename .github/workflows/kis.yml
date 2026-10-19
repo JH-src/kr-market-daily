@@ -25,6 +25,7 @@ jobs:
           cd src
           if grep -q probe ../kis/trigger.txt 2>/dev/null; then python3 kis_probe.py; fi
           if grep -q frgnprobe ../kis/trigger.txt 2>/dev/null; then python3 frgn_probe.py; exit 0; fi
+          if grep -q frgnnow ../kis/trigger.txt 2>/dev/null; then python3 kis_frgn_now.py; exit 0; fi
           if grep -q bondinfo ../kis/trigger.txt 2>/dev/null; then python3 kis_bond.py; exit 0; fi
           if grep -q speed ../kis/trigger.txt 2>/dev/null; then python3 kis_speed.py; exit 0; fi
           if grep -q etfall ../kis/trigger.txt 2>/dev/null; then python3 kis_etf_all.py; exit 0; fi
@@ -33,6 +34,7 @@ jobs:
           python3 kis_eod.py $D || echo "eod 실패"
           if grep -q eodonly ../kis/trigger.txt 2>/dev/null; then exit 0; fi
           python3 kis_daily.py
+          if [ "$(date -u +%H)" = "09" ]; then python3 kis_frgn_now.py || echo '보유비율 생략'; fi
       - name: 결과 저장
         run: |
           git config user.name "kis-bot"; git config user.email "kis-bot@users.noreply.github.com"
