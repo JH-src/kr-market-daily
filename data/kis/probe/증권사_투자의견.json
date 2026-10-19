@@ -11,8 +11,8 @@
    "stck_prdy_clpr": "276500",
    "stck_nday_esdg": "-353500",
    "nday_dprt": "-56.11",
-   "stft_esdg": "-414500",
-   "dprt": "-65.79"
+   "stft_esdg": "-406500",
+   "dprt": "-64.52"
   },
   {
    "stck_bsop_date": "20260907",
@@ -25,8 +25,8 @@
    "stck_prdy_clpr": "255500",
    "stck_nday_esdg": "-144500",
    "nday_dprt": "-36.12",
-   "stft_esdg": "-184500",
-   "dprt": "-46.12"
+   "stft_esdg": "-176500",
+   "dprt": "-44.12"
   },
   {
    "stck_bsop_date": "20260831",
@@ -39,8 +39,8 @@
    "stck_prdy_clpr": "257000",
    "stck_nday_esdg": "-193000",
    "nday_dprt": "-42.89",
-   "stft_esdg": "-234500",
-   "dprt": "-52.11"
+   "stft_esdg": "-226500",
+   "dprt": "-50.33"
   },
   {
    "stck_bsop_date": "20260810",
@@ -53,8 +53,8 @@
    "stck_prdy_clpr": "231000",
    "stck_nday_esdg": "-119000",
    "nday_dprt": "-34.00",
-   "stft_esdg": "-134500",
-   "dprt": "-38.43"
+   "stft_esdg": "-126500",
+   "dprt": "-36.14"
   },
   {
    "stck_bsop_date": "20260731",
@@ -67,8 +67,8 @@
    "stck_prdy_clpr": "207000",
    "stck_nday_esdg": "-193000",
    "nday_dprt": "-48.25",
-   "stft_esdg": "-184500",
-   "dprt": "-46.12"
+   "stft_esdg": "-176500",
+   "dprt": "-44.12"
   }
  ],
  "rt_cd": "0",

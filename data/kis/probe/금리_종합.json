@@ -4,28 +4,28 @@
    "bcdt_code": "Y0201",
    "hts_kor_isnm": "미국 30년T-BOND",
    "bond_mnrt_prpr": "5.4300",
-   "prdy_vrss_sign": "5",
-   "bond_mnrt_prdy_vrss": "-0.0900",
-   "prdy_ctrt": "-1.63",
-   "stck_bsop_date": "20261015"
+   "prdy_vrss_sign": "3",
+   "bond_mnrt_prdy_vrss": "0.0000",
+   "prdy_ctrt": "0.00",
+   "stck_bsop_date": "20261016"
   },
   {
    "bcdt_code": "Y0202",
    "hts_kor_isnm": "미국 10년T-NOTE 수익률",
-   "bond_mnrt_prpr": "5.1000",
+   "bond_mnrt_prpr": "5.0900",
    "prdy_vrss_sign": "5",
-   "bond_mnrt_prdy_vrss": "-0.0900",
-   "prdy_ctrt": "-1.73",
-   "stck_bsop_date": "20261015"
+   "bond_mnrt_prdy_vrss": "-0.0100",
+   "prdy_ctrt": "-0.20",
+   "stck_bsop_date": "20261016"
   },
   {
    "bcdt_code": "Y0203",
    "hts_kor_isnm": "미국 1년T-BILL",
-   "bond_mnrt_prpr": "4.4900",
+   "bond_mnrt_prpr": "4.4600",
    "prdy_vrss_sign": "5",
-   "bond_mnrt_prdy_vrss": "-0.0400",
-   "prdy_ctrt": "-0.88",
-   "stck_bsop_date": "20261015"
+   "bond_mnrt_prdy_vrss": "-0.0300",
+   "prdy_ctrt": "-0.67",
+   "stck_bsop_date": "20261016"
   },
   {
    "bcdt_code": "Y0204",
@@ -34,7 +34,7 @@
    "prdy_vrss_sign": "3",
    "bond_mnrt_prdy_vrss": "0.0000",
    "prdy_ctrt": "0.00",
-   "stck_bsop_date": "20261014"
+   "stck_bsop_date": "20261015"
   },
   {
    "bcdt_code": "Y0205",
@@ -43,25 +43,24 @@
    "prdy_vrss_sign": "3",
    "bond_mnrt_prdy_vrss": "0.0000",
    "prdy_ctrt": "0.00",
-   "stck_bsop_date": "20261014"
+   "stck_bsop_date": "20261015"
   }
  ],
  "output2": [
   {
-   "bcdt_code": "Y0101",
-   "hts_kor_isnm": "Y0109",
-   "bond_mnrt_prpr": "Y0117",
-   "prdy_vrss_sign": "국고채 30년",
-   "bond_mnrt_prdy_vrss": "4.2840",
-   "bstp_nmix_prdy_ctrt": "5",
-   "stck_bsop_date": "-0.0050"
+   "bcdt_code": "Y0102",
+   "hts_kor_isnm": "Y0110",
+   "bond_mnrt_prpr": "Y0198",
+   "prdy_vrss_sign": "Call 지수",
+   "bond_mnrt_prdy_vrss": "204.7562",
+   "bstp_nmix_prdy_ctrt": "2"
   },
   {
    "bcdt_code": "Y0103",
    "hts_kor_isnm": "Y0111",
    "bond_mnrt_prpr": "Y0199",
    "prdy_vrss_sign": "CD AAA 3개월(13주)",
-   "bond_mnrt_prdy_vrss": "219.2186",
+   "bond_mnrt_prdy_vrss": "219.2965",
    "bstp_nmix_prdy_ctrt": "2"
   },
   {
@@ -76,7 +75,7 @@
    "bcdt_code": "Y0105",
    "hts_kor_isnm": "Y0113",
    "bond_mnrt_prpr": "C P (91��)",
-   "prdy_vrss_sign": "3.6700",
+   "prdy_vrss_sign": "3.6900",
    "bond_mnrt_prdy_vrss": "2",
    "bstp_nmix_prdy_ctrt": "0.0100"
   },
@@ -84,9 +83,9 @@
    "bcdt_code": "Y0106",
    "hts_kor_isnm": "Y0114",
    "bond_mnrt_prpr": "�� (1��)",
-   "prdy_vrss_sign": "3.0400",
-   "bond_mnrt_prdy_vrss": "3",
-   "bstp_nmix_prdy_ctrt": "0.0000"
+   "prdy_vrss_sign": "3.0500",
+   "bond_mnrt_prdy_vrss": "2",
+   "bstp_nmix_prdy_ctrt": "0.0100"
   }
  ],
  "rt_cd": "0",

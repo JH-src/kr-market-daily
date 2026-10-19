@@ -1,16 +1,16 @@
 {
  "output1": {
-  "ovrs_nmix_prdy_vrss": "-103.16",
-  "prdy_vrss_sign": "5",
-  "prdy_ctrt": "-0.88",
-  "ovrs_nmix_prdy_clpr": "11684.38",
+  "ovrs_nmix_prdy_vrss": "279.77",
+  "prdy_vrss_sign": "2",
+  "prdy_ctrt": "2.51",
+  "ovrs_nmix_prdy_clpr": "11137.29",
   "acml_vol": "0",
   "hts_kor_isnm": "필라델피아 반도체지수",
-  "ovrs_nmix_prpr": "11581.22",
+  "ovrs_nmix_prpr": "11417.06",
   "stck_shrn_iscd": "SOX",
-  "ovrs_prod_oprc": "11280.89",
-  "ovrs_prod_hgpr": "11620.14",
-  "ovrs_prod_lwpr": "11171.53"
+  "ovrs_prod_oprc": "11466.12",
+  "ovrs_prod_hgpr": "11495.05",
+  "ovrs_prod_lwpr": "11412.53"
  },
  "output2": [
   {

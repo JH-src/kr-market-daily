@@ -1,11 +1,11 @@
 {
  "output1": {
-  "stck_prpr": "215500",
-  "prdy_vrss": "5500",
+  "stck_prpr": "223500",
+  "prdy_vrss": "8000",
   "prdy_vrss_sign": "2",
-  "prdy_ctrt": "2.62",
-  "acml_vol": "17751211",
-  "prdy_vol": "34330564"
+  "prdy_ctrt": "3.71",
+  "acml_vol": "17617415",
+  "prdy_vol": "18908560"
  },
  "output2": [
   {

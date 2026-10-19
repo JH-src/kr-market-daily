@@ -1,21 +1,21 @@
 {
  "output1": {
-  "bstp_nmix_prdy_vrss": "113.83",
+  "bstp_nmix_prdy_vrss": "99.96",
   "prdy_vrss_sign": "2",
-  "bstp_nmix_prdy_ctrt": "2.05",
-  "prdy_nmix": "5554.22",
-  "acml_vol": "286453",
-  "acml_tr_pbmn": "20021281",
+  "bstp_nmix_prdy_ctrt": "1.76",
+  "prdy_nmix": "5668.05",
+  "acml_vol": "292781",
+  "acml_tr_pbmn": "20005585",
   "hts_kor_isnm": "종합",
-  "bstp_nmix_prpr": "5668.05",
+  "bstp_nmix_prpr": "5768.01",
   "bstp_cls_code": "0001",
-  "prdy_vol": "385805",
-  "bstp_nmix_oprc": "5653.99",
-  "bstp_nmix_hgpr": "5809.94",
-  "bstp_nmix_lwpr": "5590.33",
-  "futs_prdy_oprc": "5673.01",
-  "futs_prdy_hgpr": "5751.45",
-  "futs_prdy_lwpr": "5450.81"
+  "prdy_vol": "298850",
+  "bstp_nmix_oprc": "5488.41",
+  "bstp_nmix_hgpr": "5768.01",
+  "bstp_nmix_lwpr": "5488.41",
+  "futs_prdy_oprc": "5653.99",
+  "futs_prdy_hgpr": "5809.94",
+  "futs_prdy_lwpr": "5590.33"
  },
  "output2": [
   {
