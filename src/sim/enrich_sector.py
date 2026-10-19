@@ -25,6 +25,14 @@ def main():
     F = {'sp_slope40w': slope40w, 'sp_gap200': L / ma200 - 1, 'sp_ret120': L / L.shift(120) - 1, 'sp_rs10w': rs10w,
          'tp_above20': q(L > ma20), 'tp_above60': q(L > ma60), 'tp_align': q(ma20 > ma60), 'tp_rs60': q(rs > rs60), 'tp_rs20': q(rs > rs20),
          'tp_ma60_slope': ma60 / ma60.shift(20) - 1, 'tp_rs_ma60_slope': rs60 / rs60.shift(20) - 1}
+    below60 = (L < ma60).astype(int)
+    run_below = below60.apply(lambda c: c.groupby((c == 0).cumsum()).cumsum())            # 60일선 아래 연속 일수
+    F['br_below60_10d'] = (run_below >= 10).astype(float).where(ma60.notna())  # 꺾임1: 60일선 이탈 10일 이상 지속
+    F['br_dead'] = ((ma20 < ma60) & (ma60 < ma60.shift(10))).astype(float).where(ma60.notna())   # 꺾임2: 역배열 + 60일선 하락
+    up20 = (L > ma20).astype(int)
+    run_up = up20.apply(lambda c: c.groupby((c == 0).cumsum()).cumsum())
+    cross = ((L > ma20) & (L.shift(1) <= ma20.shift(1))).astype(int).rolling(20, min_periods=1).max()
+    F['rc_start'] = ((run_up >= 10) & (cross > 0) & (ma20 > ma20.shift(5))).astype(float).where(ma20.notna())   # 초입: 20일선을 최근 20일 안에 넘고 10일 이상 유지, 20일선 상승
     me = sorted(set([pd.Timestamp(t) for t in C.month_ends] + list(L.index[-10:])))   # 월말 + 최근 10거래일(오늘 판정용)
     rows = []
     for t in me:

@@ -19,8 +19,8 @@ AXES = {'가격': ['sp_slope40w', 'sp_gap200', 'sp_ret120', 'sp_rs10w'], '수급
         '이익': ['se_opg', 'se_opm', 'se_exp'], '확산': ['sb_nearhi', 'sb_above60']}
 AXIS_SETS = {'가격만': ['가격'], '가격+수급': ['가격', '수급'], '가격+수급+이익': ['가격', '수급', '이익'], '네축': ['가격', '수급', '이익', '확산'],
              '추세흐름': ['추세흐름'], '추세흐름+수급기세': ['추세흐름', '수급기세'], '추세흐름+수급기세+이익': ['추세흐름', '수급기세', '이익']}
-GATES3 = ('단계', '추세')    # 단계: 그날 기준 주도·과열 / 추세: 최근 3개월 동안 60일선 위 60% 이상 + 20일선>60일선 50% 이상(점이 아닌 흐름)
-TPCOLS = ['tp_above20', 'tp_above60', 'tp_align', 'tp_rs60', 'tp_rs20', 'tp_ma60_slope', 'tp_rs_ma60_slope']
+GATES3 = ('단계', '추세', '추세-꺾임제외', '추세+초입')    # 단계: 그날 기준 주도·과열 / 추세: 최근 3개월 동안 60일선 위 60% 이상 + 20일선>60일선 50% 이상(점이 아닌 흐름)
+TPCOLS = ['tp_above20', 'tp_above60', 'tp_align', 'tp_rs60', 'tp_rs20', 'tp_ma60_slope', 'tp_rs_ma60_slope', 'br_below60_10d', 'br_dead', 'rc_start']
 KS = (2, 3, 5, 99)          # 99 = 주도·과열 섹터 전부(점수 상위 6종목, 섹터당 2)
 REPS = {'시총1위': ('sec_cap_rank', True), '거래대금1위': ('sec_val_rank', True), '보유비율1위': ('frgn_hold', False),
         '외인기관60일1위': ('fo60', False), '시총거래대금합': ('rep_combo', True)}
@@ -64,10 +64,13 @@ def load():
 def sector_table(g, gate='단계'):
     """한 월말의 섹터 축 점수(5종목 이상). gate=단계: 그날 주도·과열 / 추세: 3개월 흐름 기준."""
     x = g[g['sector'].notna() & (g['sector'] != '기타')]
+    trend = (x['tp_above60'] >= 0.6) & (x['tp_align'] >= 0.5)
     if gate == '단계':
         x = x[x['stage'].isin(STAGES)]
+    elif gate == '추세+초입':
+        x = x[trend | (x['rc_start'] > 0)]
     else:
-        x = x[(x['tp_above60'] >= 0.6) & (x['tp_align'] >= 0.5)]
+        x = x[trend]
     if x.empty:
         return pd.DataFrame()
     opg = (x['_op_g'] > 0).where(x['_op_g'].notna())
@@ -89,6 +92,13 @@ def sector_table(g, gate='단계'):
     a['sf_fo60'] = (fo60 / a['cap'] * 100).where(fo60 != 0)
     a['sf_fo20'] = (fo20 / a['cap'] * 100).where(fo20 != 0)
     a['sf_fo_accel'] = ((fo20 - (fo60 - fo20) / 2) / a['cap'] * 100).where(fo60 != 0)   # 최근 20일 순매수가 그 전 40일 평균 속도보다 빠른가(기세)
+    # 꺾임 판정: 60일선 이탈 10일 지속 / 역배열+60일선 하락 / 수급 이탈(20일 순매도가 60일 누적 순매수의 절반 이상 되돌림 또는 둘 다 순매도). 둘 이상이면 꺾임
+    flow_out = ((fo20 < 0) & ((fo60 <= 0) | (-fo20 >= 0.5 * fo60))).astype(int).where(fo60 != 0, 0)
+    a['br_n'] = a['br_below60_10d'].fillna(0) + a['br_dead'].fillna(0) + flow_out
+    if gate == '추세-꺾임제외':
+        a = a[a['br_n'] < 2]
+        if a.empty:
+            return a
     for ax, cols in AXES.items():
         a['ax_' + ax] = a[cols].rank(pct=True).mean(axis=1)
     return a

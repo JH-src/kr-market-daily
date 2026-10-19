@@ -94,6 +94,8 @@ def main():
             for c in ('frgn20', 'orgn20', 'prsn20', 'frgn60', 'orgn60', 'pension60'):
                 p[c + '_cap'] = p[c] / p['cap'] * 100       # 시가총액 대비 %
             p['fo60_cap'] = p['frgn60_cap'] + p['orgn60_cap']
+            fo20 = p['frgn20'] + p['orgn20']; fo60 = p['frgn60'] + p['orgn60']
+            p['fo_accel_cap'] = (fo20 - (fo60 - fo20) / 2) / p['cap'] * 100   # 종목 수급 기세: 최근 20일 매수 속도 - 그 전 40일 평균 속도
         # 섹터 안 대표성: 섹터 시총 순위, 섹터 거래대금 순위(valrank가 작을수록 거래대금 큼)
         g = p.groupby(['date', 'sector'])
         p['sec_cap_rank'] = g['cap'].rank(ascending=False)
