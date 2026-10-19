@@ -5,7 +5,13 @@ from kis_probe import token, call, Q, OUT
 def save(name, obj):
     json.dump(obj, open(os.path.join(OUT, f'frgn_{name}.json'), 'w'), ensure_ascii=False, indent=1)
 
-tok = token()
+import time
+tok = None
+for i in range(6):
+    try:
+        tok = token(); break
+    except Exception as e:
+        print('토큰 재시도', i, e); time.sleep(65)
 # 1) 한투 현재가: 외국인 보유수량·소진율(오늘 값)
 save('한투_현재가', call(tok, Q + 'inquire-price', 'FHKST01010100', {'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': '005930'}))
 # 2) 한투 일자별 시세: 소진율이 날짜별로 오는지, 몇 일치인지
