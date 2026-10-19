@@ -15,8 +15,12 @@ from .factors import F
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WORK = os.environ.get('SIM_CACHE', '/tmp/sim_cache')
 AXES = {'가격': ['sp_slope40w', 'sp_gap200', 'sp_ret120', 'sp_rs10w'], '수급': ['sf_frgn60', 'sf_orgn60', 'sf_pension60'],
+        '추세흐름': ['tp_above20', 'tp_above60', 'tp_align', 'tp_rs60', 'tp_ma60_slope', 'tp_rs_ma60_slope'], '수급기세': ['sf_fo_accel', 'sf_fo60', 'sf_fo20'],
         '이익': ['se_opg', 'se_opm', 'se_exp'], '확산': ['sb_nearhi', 'sb_above60']}
-AXIS_SETS = {'가격만': ['가격'], '가격+수급': ['가격', '수급'], '가격+수급+이익': ['가격', '수급', '이익'], '네축': ['가격', '수급', '이익', '확산']}
+AXIS_SETS = {'가격만': ['가격'], '가격+수급': ['가격', '수급'], '가격+수급+이익': ['가격', '수급', '이익'], '네축': ['가격', '수급', '이익', '확산'],
+             '추세흐름': ['추세흐름'], '추세흐름+수급기세': ['추세흐름', '수급기세'], '추세흐름+수급기세+이익': ['추세흐름', '수급기세', '이익']}
+GATES3 = ('단계', '추세')    # 단계: 그날 기준 주도·과열 / 추세: 최근 3개월 동안 60일선 위 60% 이상 + 20일선>60일선 50% 이상(점이 아닌 흐름)
+TPCOLS = ['tp_above20', 'tp_above60', 'tp_align', 'tp_rs60', 'tp_rs20', 'tp_ma60_slope', 'tp_rs_ma60_slope']
 KS = (2, 3, 5, 99)          # 99 = 주도·과열 섹터 전부(점수 상위 6종목, 섹터당 2)
 REPS = {'시총1위': ('sec_cap_rank', True), '거래대금1위': ('sec_val_rank', True), '보유비율1위': ('frgn_hold', False),
         '외인기관60일1위': ('fo60', False), '시총거래대금합': ('rep_combo', True)}
@@ -42,7 +46,7 @@ def load():
     d, keys = E2.load()
     sf = pickle.load(open(os.path.join(WORK, 'sector_feat.pkl'), 'rb'))
     d = d.merge(sf, on=['date', 'sector'], how='left')
-    for c in ('frgn60', 'orgn60', 'pension60', 'frgn_hold', 'sec_cap_rank', 'sec_val_rank', 'rep_combo', 'exp_g3'):
+    for c in ('frgn60', 'orgn60', 'frgn20', 'orgn20', 'pension60', 'frgn_hold', 'sec_cap_rank', 'sec_val_rank', 'rep_combo', 'exp_g3'):
         if c not in d:
             d[c] = np.nan
     d['fo60'] = d['frgn60'].fillna(0) + d['orgn60'].fillna(0)
@@ -50,31 +54,41 @@ def load():
     raw = pickle.load(open(os.path.join(WORK, 'panel_theme_x.pkl'), 'rb'))
     raw = factorize(raw, keys)
     raw = raw.merge(sf, on=['date', 'sector'], how='left')
-    for c in ('frgn60', 'orgn60', 'pension60', 'frgn_hold', 'sec_cap_rank', 'sec_val_rank', 'rep_combo', 'exp_g3'):
+    for c in ('frgn60', 'orgn60', 'frgn20', 'orgn20', 'pension60', 'frgn_hold', 'sec_cap_rank', 'sec_val_rank', 'rep_combo', 'exp_g3'):
         if c not in raw:
             raw[c] = np.nan
     raw['fo60'] = raw['frgn60'].fillna(0) + raw['orgn60'].fillna(0)
     return d, keys, raw
 
 
-def sector_table(g):
-    """한 월말의 섹터 축 점수(주도·과열 단계, 5종목 이상)."""
-    x = g[g['sector'].notna() & (g['sector'] != '기타') & g['stage'].isin(STAGES)]
+def sector_table(g, gate='단계'):
+    """한 월말의 섹터 축 점수(5종목 이상). gate=단계: 그날 주도·과열 / 추세: 3개월 흐름 기준."""
+    x = g[g['sector'].notna() & (g['sector'] != '기타')]
+    if gate == '단계':
+        x = x[x['stage'].isin(STAGES)]
+    else:
+        x = x[(x['tp_above60'] >= 0.6) & (x['tp_align'] >= 0.5)]
     if x.empty:
         return pd.DataFrame()
     opg = (x['_op_g'] > 0).where(x['_op_g'].notna())
     t = pd.DataFrame({'sector': x['sector'], 'cap': x['cap'], 'frgn60': x['frgn60'], 'orgn60': x['orgn60'], 'pension60': x['pension60'],
                       'opg': opg, 'opm': x['_opm_chg'], 'exp': x['exp_g3'], 'nearhi': (x['_hi52'] > -10).where(x['_hi52'].notna()), 'above60': (x['g60'] > 0),
-                      'sp_slope40w': x['sp_slope40w'], 'sp_gap200': x['sp_gap200'], 'sp_ret120': x['sp_ret120'], 'sp_rs10w': x['sp_rs10w']})
+                      'sp_slope40w': x['sp_slope40w'], 'sp_gap200': x['sp_gap200'], 'sp_ret120': x['sp_ret120'], 'sp_rs10w': x['sp_rs10w'],
+                      'frgn20': x['frgn20'] if 'frgn20' in x else np.nan, 'orgn20': x['orgn20'] if 'orgn20' in x else np.nan, **{c: x[c] for c in TPCOLS}})
     a = t.groupby('sector').agg(n=('cap', 'size'), cap=('cap', 'sum'), frgn60=('frgn60', 'sum'), orgn60=('orgn60', 'sum'), pension60=('pension60', 'sum'),
                                 se_opg=('opg', 'mean'), se_opm=('opm', 'median'), se_exp=('exp', 'mean'), sb_nearhi=('nearhi', 'mean'), sb_above60=('above60', 'mean'),
-                                sp_slope40w=('sp_slope40w', 'first'), sp_gap200=('sp_gap200', 'first'), sp_ret120=('sp_ret120', 'first'), sp_rs10w=('sp_rs10w', 'first'))
+                                sp_slope40w=('sp_slope40w', 'first'), sp_gap200=('sp_gap200', 'first'), sp_ret120=('sp_ret120', 'first'), sp_rs10w=('sp_rs10w', 'first'),
+                                fo20=('frgn20', 'sum'), o20=('orgn20', 'sum'), **{c: (c, 'first') for c in TPCOLS})
     a = a[a['n'] >= 5]
     if a.empty:
         return a
     for c in ('frgn60', 'orgn60', 'pension60'):
         a['sf_' + c] = a[c] / a['cap'] * 100
         a.loc[a[c] == 0, 'sf_' + c] = np.nan
+    fo60 = a['frgn60'] + a['orgn60']; fo20 = a['fo20'] + a['o20']
+    a['sf_fo60'] = (fo60 / a['cap'] * 100).where(fo60 != 0)
+    a['sf_fo20'] = (fo20 / a['cap'] * 100).where(fo20 != 0)
+    a['sf_fo_accel'] = ((fo20 - (fo60 - fo20) / 2) / a['cap'] * 100).where(fo60 != 0)   # 최근 20일 순매수가 그 전 40일 평균 속도보다 빠른가(기세)
     for ax, cols in AXES.items():
         a['ax_' + ax] = a[cols].rank(pct=True).mean(axis=1)
     return a
@@ -140,6 +154,14 @@ def perf(top):
 
 def variants():
     V = []
+    for gt in GATES3:
+        for v in _variants():
+            V.append((f'{gt}|' + v[0],) + v[1:] + (gt,))
+    return V
+
+
+def _variants():
+    V = []
     for ax in AXIS_SETS:
         V.append((f'{ax}|전체|상위6(섹터당2)', ax, 99, '상위6', None, False))
         for K in KS[:-1]:
@@ -164,18 +186,19 @@ def run(d, keys):
         if Y < Y0 or not W.get(Y):
             continue
         g = g.set_index('code')
-        st = sector_table(g)
         score = stock_scores(g, W[Y]); ok = gates(g)
         tops = {}
-        for ax, axes in AXIS_SETS.items():
-            if st.empty:
-                tops[ax] = {K: [] for K in KS}; continue
-            tot = st[['ax_' + a for a in axes]].mean(axis=1).sort_values(ascending=False)
-            tops[ax] = {K: list(tot.index[:K]) for K in KS}
-        for name, ax, K, struct, rep, nr in V:
+        for gt in GATES3:
+            st = sector_table(g, gt)
+            for ax, axes in AXIS_SETS.items():
+                if st.empty:
+                    tops[(gt, ax)] = {K: [] for K in KS}; continue
+                tot = st[['ax_' + a for a in axes]].mean(axis=1).sort_values(ascending=False)
+                tops[(gt, ax)] = {K: list(tot.index[:K]) for K in KS}
+        for name, ax, K, struct, rep, nr, gt in V:
             if rep and g[REPS[rep][0]].notna().sum() < 50:
                 continue                      # 그 달 자료가 없는 대표주 정의는 건너뜀(0으로 채우지 않음)
-            sel = select(g, score, ok, tops[ax][K], struct, rep, nr, K)
+            sel = select(g, score, ok, tops[(gt, ax)][K], struct, rep, nr, K)
             rows[name].append({'date': t, **perf(g.loc[sel])})
             picks_log[(name, t)] = sel
         base = E2.pick_month(g[g['stage'].isin(STAGES)], W[Y], '영업이익증가', 2) if (g['stage'].isin(STAGES)).sum() >= 20 else g.iloc[0:0]
@@ -229,7 +252,7 @@ def stat_table(series, lo=2016, hi=2023):
 def marginals(T):
     V = {v[0]: v for v in variants()}
     rows = []
-    for dim, fn in (('축', lambda v: v[1]), ('섹터 수', lambda v: '전체' if v[2] == 99 else f'K{v[2]}'), ('구조', lambda v: v[3]), ('대표주 정의', lambda v: v[4] or '-'),
+    for dim, fn in (('섹터 관문', lambda v: v[6]), ('축', lambda v: v[1]), ('섹터 수', lambda v: '전체' if v[2] == 99 else f'K{v[2]}'), ('구조', lambda v: v[3]), ('대표주 정의', lambda v: v[4] or '-'),
                     ('차기주자 조건', lambda v: ('덜오름' if v[5] else '조건없음') if v[3] == '대표+차기' else '-')):
         grp = {}
         for name, v in V.items():
@@ -245,7 +268,6 @@ def marginals(T):
 def current(raw, keys, W, picks, ens):
     t = raw['date'].max()
     g = raw[raw['date'] == t].set_index('code')
-    st = sector_table(g)
     Yc = max(picks) if picks else Y1
     w = W.get(Y1 + 1) or W.get(Yc) or {}
     score = stock_scores(g, w); ok = gates(g)
@@ -256,7 +278,8 @@ def current(raw, keys, W, picks, ens):
     for name in names:
         if not name or name not in V:
             continue
-        _, ax, K, struct, rep, nr = V[name]
+        _, ax, K, struct, rep, nr, gt = V[name]
+        st = sector_table(g, gt)
         if st.empty:
             continue
         tot = st[['ax_' + a for a in AXIS_SETS[ax]]].mean(axis=1).sort_values(ascending=False)
@@ -265,6 +288,7 @@ def current(raw, keys, W, picks, ens):
         for c in sel:
             cnt[c] = cnt.get(c, 0) + 1
     out['ensemble'] = dict(sorted(cnt.items(), key=lambda x: -x[1]))
+    st = sector_table(g, '추세')
     if not st.empty:
         out['sectors'] = st[[c for c in st.columns if c.startswith('ax_')] + ['n']].round(3).sort_values('ax_가격', ascending=False).to_dict('index')
     return out, st, g, score

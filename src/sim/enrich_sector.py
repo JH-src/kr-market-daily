@@ -19,8 +19,13 @@ def main():
     rs = L.div(k, axis=0)
     rsw = rs.resample('W-FRI').last()
     rs10w = (rsw / rsw.rolling(10, min_periods=10).mean() - 1).reindex(L.index, method='ffill')
-    F = {'sp_slope40w': slope40w, 'sp_gap200': L / ma200 - 1, 'sp_ret120': L / L.shift(120) - 1, 'sp_rs10w': rs10w}
-    me = [pd.Timestamp(t) for t in C.month_ends]
+    ma20, ma60 = L.rolling(20, min_periods=20).mean(), L.rolling(60, min_periods=60).mean()
+    rs20, rs60 = rs.rolling(20, min_periods=20).mean(), rs.rolling(60, min_periods=60).mean()
+    q = lambda b: b.astype(float).where(ma60.notna()).rolling(60, min_periods=40).mean()   # 최근 3개월 중 조건이 맞은 날 비율(점이 아닌 흐름)
+    F = {'sp_slope40w': slope40w, 'sp_gap200': L / ma200 - 1, 'sp_ret120': L / L.shift(120) - 1, 'sp_rs10w': rs10w,
+         'tp_above20': q(L > ma20), 'tp_above60': q(L > ma60), 'tp_align': q(ma20 > ma60), 'tp_rs60': q(rs > rs60), 'tp_rs20': q(rs > rs20),
+         'tp_ma60_slope': ma60 / ma60.shift(20) - 1, 'tp_rs_ma60_slope': rs60 / rs60.shift(20) - 1}
+    me = sorted(set([pd.Timestamp(t) for t in C.month_ends] + list(L.index[-10:])))   # 월말 + 최근 10거래일(오늘 판정용)
     rows = []
     for t in me:
         if t not in L.index:
