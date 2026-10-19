@@ -1,1 +1,1 @@
-stockinfo 2026-10-16T23:21:29
+bondinfo Mon Oct 19 10:37:50 UTC 2026
