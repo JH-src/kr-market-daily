@@ -1,7 +1,7 @@
 """테마 섹터 분류: 국내 주식형 ETF 전체 구성종목(이름으로 테마 판정) + DART 산업분류(KSIC)로 세부 구분.
 여러 테마 ETF에 반복 편입된 종목은 그 테마로, 나머지는 산업분류 기반 섹터로 둔다.
 현재 편입 기준을 과거에도 적용하는 한계가 있다(시점별 편입 이력 없음)."""
-import glob, os, re
+import glob, json, os, re
 import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -56,6 +56,11 @@ def business_themes():
     return top[ok].map(BUS_MAP), b
 
 
+COMPAT = {'항공·방산': {'방산·우주'}, '방산': {'방산·우주'}, '제약·바이오': {'바이오·헬스케어'}, '바이오연구': {'바이오·헬스케어'}, '의료기기': {'바이오·헬스케어', '의료기기'},
+          '자동차부품': {'자동차', '로봇', '2차전지', '자동차 전장·부품'}, '자동차': {'자동차'}, '화학': {'2차전지', '화장품', '반도체', '반도체 소부장'}, '소프트웨어·게임': {'게임', '인터넷·소프트웨어'},
+          '인터넷·IT서비스': {'인터넷·소프트웨어', '게임'}, '미디어·콘텐츠': {'엔터·콘텐츠', '게임'}, '레저': {'엔터·콘텐츠'}, '유통': {'화장품', '음식료'}, '음식료': {'음식료', '화장품'},
+          '철강': {'2차전지'}, '비철금속': {'2차전지'}, '금속가공': {'2차전지', '원자력', '조선', '방산·우주'}, '조선': {'조선'}, '전력기기': {'전력기기', '원자력'}, '운송장비': {'조선', '방산·우주', '자동차'},
+          '엔지니어링': {'원자력', '조선'}, '통신': set(), '운송': set(), '건설': set(), '유틸리티': set(), '지주': {'은행', '증권', '보험'}, '금융': {'은행', '증권', '보험'}, '은행': set(), '증권': set(), '보험': set()}
 GENERIC = {'디스플레이·전자부품', '컴퓨터·통신장비', '전기장비', '의료·정밀기기', '기계', '기타'}
 END_MAP = {'반도체': '반도체 부품', '반도체장비': '반도체 장비', '반도체소재': '반도체 소재', '통신장비': '통신·RF', 'RF·무선': '통신·RF',
            '디스플레이': '디스플레이', '2차전지': '2차전지', 'PCB·기판': 'PCB·기판', '스마트폰부품': '스마트폰 부품', '수동부품': '전자 수동부품',
@@ -91,10 +96,16 @@ def classify(ksic_sector, induty):
     best = g.sort_values(['n_etf', 'w'], ascending=False).drop_duplicates('code').set_index('code')['theme']
     out = ksic_sector.copy()
     bt, b = business_themes()
-    for c, t in bt.items():          # 사업보고서 기준(ETF보다 먼저 깔고, ETF 테마가 있으면 덮어씀)
-        out[c] = t
+    for c, t in bt.items():          # 사업보고서 기준(ETF보다 먼저 깔고, ETF 테마가 있으면 덮어씀). 산업분류와 어긋나면 안 바꿈(삼성물산→바이오, 한국전력→원자력 방지)
+        k = ksic_sector.get(c)
+        if k in GENERIC or k is None or t in COMPAT.get(k, ()):
+            out[c] = t
+    # ETF 테마는 산업분류와 어긋나지 않을 때만 덮어씀(현대차→로봇, 대한항공→엔터, 삼성물산·한국전력→원자력 같은 오류 방지).
+    # 허용: 산업분류가 넓은 분류(GENERIC)이거나, 사업보고서 테마가 같거나, 산업분류와 어울리는 테마(COMPAT)일 때.
     for c, t in best.items():
-        out[c] = t
+        k = ksic_sector.get(c)
+        if k in GENERIC or k is None or bt.get(c) == t or t in COMPAT.get(k, ()):
+            out[c] = t
     # 반도체 안 세부: 장비(KSIC 292 특수목적기계·272 측정검사)·소재(20·22·24)·부품(262)·소자(261)
     for c in out.index:
         if out[c] in ('반도체', '반도체 소부장'):
@@ -113,4 +124,10 @@ def classify(ksic_sector, induty):
                 out[c] = '반도체 부품'
             else:
                 out[c] = '반도체 소자'
-    return end_market(out)
+    out = end_market(out)
+    ov = os.path.join(ROOT, 'config', 'sector_override.json')
+    if os.path.exists(ov):
+        for c, t in json.load(open(ov)).items():
+            if not c.startswith('_'):
+                out[c] = t
+    return out
