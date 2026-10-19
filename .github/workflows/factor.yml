@@ -35,8 +35,9 @@ jobs:
           cd src && python3 -m sim.sector_test 2>&1 | tail -60
           python3 -m sim.sector_test wf 2>&1 | tail -60
           python3 -m sim.etf_trend 2>&1 | tail -5 || true
+          python3 -m sim.lead_wf stock 2>&1 | tail -3 || true; python3 -m sim.lead_wf etf 2>&1 | tail -3 || true
           cd .. && git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
-          git add docs/sim/sector_test.md docs/sim/sector_wf.md docs/sim/sector_current.json docs/sim/etf_trend.md && git commit -q -m "섹터 판정 검증" && (git pull --rebase -X theirs -q && git push) || true
+          git add docs/sim/sector_test.md docs/sim/sector_wf.md docs/sim/sector_current.json docs/sim/etf_trend.md docs/sim/lead_wf_*.md docs/sim/lead_current_*.json && git commit -q -m "섹터 판정 검증" && (git pull --rebase -X theirs -q && git push) || true
       - name: 요소 성적표·종합 점수
         env:
           SIM_CACHE: /tmp/simcache
