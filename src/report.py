@@ -988,7 +988,7 @@ def sim_picks_v2(asof):
     st = SE.sector_stage(C, i)
     reg = SE.regime(C, i)
     n = SIM_LOGIC_V2['n_by_regime'][reg]
-    scope = cfg.get('scope', '주도·과열')
+    scope = cfg.get('scope', '주도·과열').replace('(가치·질)', '')
     stages = ('주도', '과열 주의') if scope in ('주도·과열', '추세흐름∪주도·과열') else ('주도', '초기')
     flow_ok = set()
     if scope.startswith('추세흐름'):

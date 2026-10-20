@@ -16,7 +16,7 @@ from sim import search as S
 from sim.factors import F, ROOT
 
 N = 6
-SCOPES = ('전체', '주도·초기', '주도·과열', '주도·과열(동일가중)', '섹터점수 상위5', '추세흐름', '추세흐름∪주도·과열', '20일선흐름', '20일선흐름+1개월강도', '20일선흐름+1개월상위8')
+SCOPES = ('전체', '주도·초기', '주도·과열', '주도·과열(동일가중)', '섹터점수 상위5', '추세흐름', '추세흐름∪주도·과열', '20일선흐름', '20일선흐름+1개월강도', '20일선흐름+1개월상위8', '주도·과열(가치·질)', '추세흐름(가치·질)')
 GATES = {
     '없음': lambda g: pd.Series(True, index=g.index),
     '고점-30%이내': lambda g: g['_hi52'] > -30,
@@ -109,7 +109,15 @@ def pick_month(g, w, gate, cap_per_sector):
     return g.loc[out]
 
 
+QV = ('bp', 'ep', 'op_yield', 'roe', 'op_g', 'opm_chg', 'low_vol')   # 처음 가설: 주도 섹터 안 가치·질·저변동
+
+
+def base_scope(sc):
+    return sc.replace('(가치·질)', '')
+
+
 def scope_df(d, sc):
+    sc = base_scope(sc)
     if sc == '전체':
         return d
     if sc == '주도·초기':
@@ -145,7 +153,7 @@ def run():
     d, keys = load()
     years = range(2013, 2027)
     ICs = {sc: monthly_ic(scope_df(d, sc), keys) for sc in SCOPES}
-    W = {sc: {Y: choose_weights(ICs[sc], Y) for Y in years} for sc in SCOPES}
+    W = {sc: {Y: {k: v for k, v in choose_weights(ICs[sc], Y).items() if ('가치·질' not in sc or k in QV)} for Y in years} for sc in SCOPES}
     series = {}
     for sc in SCOPES:
         dd = scope_df(d, sc)
@@ -184,7 +192,8 @@ def run():
     return d, keys, W, series, M, picks
 
 
-FIXED = '추세흐름|영업이익증가|섹터당2'   # v2.1(2026-10-20): 섹터 판정을 그날 단계 대신 3개월 흐름으로. 이전: '주도·과열|영업이익증가|섹터당2'
+FIXED = '주도·과열(가치·질)|영업이익증가|섹터당2'   # v2.2(2026-10-20): 그날 강한 섹터 안 가치·질·저변동. 이전 v2.1: '추세흐름|영업이익증가|섹터당2'
+FIXED_V21 = '추세흐름|영업이익증가|섹터당2'   # v2.1(2026-10-20): 섹터 판정을 그날 단계 대신 3개월 흐름으로. 이전: '주도·과열|영업이익증가|섹터당2'
 FIXED_PREV = '주도·과열|영업이익증가|섹터당2'   # 원칙: 섹터 먼저(주도·과열 = 강한 섹터) ∩ 실적 상승(영업이익 증가) + 섹터당 2종목 분산. 2016~2023 걷기식 7/8년 플러스, 2024~ +6.5%p
 
 
@@ -246,6 +255,8 @@ def write(d, keys, W, series, M, picks):
     scope, gate, cp = best.split('|')
     ICs = monthly_ic(scope_df(d, scope), keys)
     w = choose_weights(ICs, Y)    # 올해 가중치는 작년까지 자료로 정해 1년 고정(매일 바뀌지 않게)
+    if '가치·질' in scope:
+        w = {k: v for k, v in w.items() if k in QV}
     cur = {'asof': str(pd.Timestamp.today().date()), 'variant': best, 'scope': scope, 'gate': gate, 'cap_per_sector': 2 if cp == '섹터당2' else None,
            'weights': w, 'desc': {k: F[k][1] for k in w}}
     json.dump(cur, open(os.path.join(ROOT, 'docs', 'sim', 'engine_current.json'), 'w'), ensure_ascii=False, indent=1)
