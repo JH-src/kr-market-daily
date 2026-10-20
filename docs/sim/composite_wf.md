@@ -4,41 +4,41 @@
 
 ## 전체
 
-2013~2023 평균 3개월 +1.72%p, 6개월 +1.68%p, 플러스 해 6/10 · 2024년 이후 3개월 +0.89%p, 6개월 +1.92%p
+2013~2023 평균 3개월 +2.23%p, 6개월 +2.92%p, 플러스 해 8/10 · 2024년 이후 3개월 +1.67%p, 6개월 +3.43%p
 
-|   date |   3개월 |   6개월 |   6개월 중위 | 쓴 요소                                                                                                                                      |
-|-------:|------:|------:|---------:|:------------------------------------------------------------------------------------------------------------------------------------------|
-|   2014 |   1.7 |  -1.5 |     -0.3 | hi52, low_vol                                                                                                                             |
-|   2015 |   0.5 |  -0.6 |      0.7 | hi52, low_vol                                                                                                                             |
-|   2016 |   1.5 |   2.7 |      1.4 | hi52, low_vol, -val_surge                                                                                                                 |
-|   2017 |  -0.8 |  -3   |     -9.6 | hi52, low_vol, -val_surge, small                                                                                                          |
-|   2018 |   4.7 |   3.2 |      0.5 | hi52, low_vol, -val_surge, -orgn20_cap, supply90                                                                                          |
-|   2019 |   4.3 |   4.5 |     -1.8 | accel_d, op_g, opm_chg, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, -fo_minus_p                                                       |
-|   2020 |   1.3 |   1.6 |     -2.7 | accel_d, op_g, opm_chg, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, major_foreign90, buyback90                                        |
-|   2021 |   1.4 |  -0.7 |     -3.4 | accel_d, op_g, opm_chg, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, buyback90                                              |
-|   2022 |  -0.4 |   5.3 |      2.6 | accel_d, op_g, opm_chg, roe, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, buyback90, supply90                               |
-|   2023 |   3   |   5.3 |     -1.8 | accel_d, op_g, opm_chg, roe, bp, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, major_foreign90, buyback90, supply90          |
-|   2024 |   1   |   5.4 |      1.5 | accel_d, op_g, opm_chg, roe, ep, bp, op_yield, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, major_foreign90, buyback90, supply90 |
-|   2025 |   3.8 |  -1.3 |     -4.7 | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, major_foreign90, buyback90, supply90     |
-|   2026 | -10.9 |   0.8 |     -0.8 | accel_d, op_g, opm_chg, roe, ep, bp, op_yield, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, major_foreign90, buyback90, supply90 |
+|   date |   3개월 |   6개월 |   6개월 중위 | 쓴 요소                                                                                                                                                                       |
+|-------:|------:|------:|---------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|   2014 |   4.4 |   4.2 |     -0.3 | hi52, low_vol, -rep_val                                                                                                                                                    |
+|   2015 |  -3.6 |  -2.4 |     -4   | hi52, low_vol, -rep_cap, -rep_val                                                                                                                                          |
+|   2016 |   1.8 |   2.6 |      0.4 | hi52, low_vol, -val_surge, -rep_cap, -rep_val                                                                                                                              |
+|   2017 |   1.2 |  -0.3 |     -7.9 | hi52, low_vol, -val_surge, small, -rep_cap, -rep_val                                                                                                                       |
+|   2018 |   7.2 |   6.5 |      3.6 | hi52, low_vol, -val_surge, supply90, pension60_cap, -fo_accel_cap, -rep_val                                                                                                |
+|   2019 |   4.1 |   4.1 |     -3.2 | accel_d, op_g, opm_chg, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, -orgn20_cap, -fo_minus_p, -fo_accel_cap, -rep_val                                                   |
+|   2020 |  -1.7 |   2.3 |     -4.8 | accel_d, op_g, opm_chg, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, major_foreign90, buyback90, -fo_accel_cap, -rep_val                                                 |
+|   2021 |   3.7 |   0.7 |     -0.2 | accel_d, op_g, opm_chg, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, buyback90, -rep_val                                                                     |
+|   2022 |   0.9 |   4.2 |     -1.2 | accel_d, op_g, opm_chg, roe, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, -orgn20_cap, buyback90, supply90, -fo_accel_cap, -rep_val                                       |
+|   2023 |   4.3 |   7.4 |      2.3 | accel_d, op_g, opm_chg, roe, bp, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, major_foreign90, buyback90, supply90, -fo_accel_cap, -rep_val                   |
+|   2024 |   2.2 |   7.9 |      7.4 | accel_d, op_g, opm_chg, roe, ep, bp, op_yield, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, major_foreign90, buyback90, supply90, -rep_val                         |
+|   2025 |   2.8 |  -2.4 |     -8.9 | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, -orgn20_cap, major_foreign90, buyback90, supply90, -fo_accel_cap, -rep_val |
+|   2026 |  -5   |   8.9 |     -0   | accel_d, op_g, opm_chg, roe, ep, bp, op_yield, -rs3, -r1rel, hi52, low_vol, -val_surge, major_foreign90, buyback90, supply90, -fo_accel_cap, -rep_val                      |
 
 ## 주도·초기 섹터
 
-2013~2023 평균 3개월 +1.02%p, 6개월 +2.02%p, 플러스 해 7/10 · 2024년 이후 3개월 +4.35%p, 6개월 +2.07%p
+2013~2023 평균 3개월 +0.54%p, 6개월 +1.06%p, 플러스 해 5/10 · 2024년 이후 3개월 +0.54%p, 6개월 +1.10%p
 
-|   date |   3개월 |   6개월 |   6개월 중위 | 쓴 요소                                                                                                                   |
-|-------:|------:|------:|---------:|:-----------------------------------------------------------------------------------------------------------------------|
-|   2014 |  -0.6 |  -2.8 |     -3.8 | low_vol                                                                                                                |
-|   2015 |  -2.1 |  -2.7 |     -2.6 | hi52, low_vol                                                                                                          |
-|   2016 |   3.8 |   8   |      6.1 | low_vol, -val_surge                                                                                                    |
-|   2017 |   1.4 |   8.2 |      2.3 | low_vol, -val_surge, small, -frgn_streak                                                                               |
-|   2018 |   4.4 |   2.5 |     -1.9 | hi52, low_vol, -val_surge, supply90                                                                                    |
-|   2019 |   3.3 |   4.4 |      0.3 | ry, op_g, opm_chg, -r1, -r1rel, hi52, low_vol, -val_surge                                                              |
-|   2020 |  -2.9 |  -3   |     -7.7 | op_g, opm_chg, -r1, -r1rel, hi52, low_vol, -val_surge, buyback90                                                       |
-|   2021 |   0.7 |   2.6 |     -2.7 | op_g, opm_chg, -r1rel, hi52, low_vol, -orgn20_cap, buyback90, -exp_g3                                                  |
-|   2022 |  -1   |   1.2 |     -7.2 | op_g, opm_chg, bp, -r1, -rs3, -r1rel, hi52, low_vol, -orgn20_cap, buyback90, -exp_g3                                   |
-|   2023 |   3.2 |   1.8 |     -2.8 | accel_d, op_g, opm_chg, ep, bp, -rs3, -r1rel, hi52, low_vol                                                            |
-|   2024 |   0.3 |  -0.4 |     -0.6 | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, buyback90                          |
-|   2025 |   5   |  -0.2 |     -6.3 | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, -orgn20_cap, buyback90 |
-|   2026 |  46.2 |  56.4 |     43.4 | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, buyback90              |
+|   date |   3개월 |   6개월 |   6개월 중위 | 쓴 요소                                                                                                                                           |
+|-------:|------:|------:|---------:|:-----------------------------------------------------------------------------------------------------------------------------------------------|
+|   2014 |   2.5 |   4.3 |      2.3 | hi52, low_vol, -rep_val                                                                                                                        |
+|   2015 |  -0.4 |  -0.9 |     -2.6 | hi52, low_vol, -rep_val                                                                                                                        |
+|   2016 |   1.2 |   1.8 |     -1.4 | low_vol, -val_surge, -rep_cap, -rep_val                                                                                                        |
+|   2017 |   1.3 |   4.6 |      0.9 | -r1rel, low_vol, -val_surge, small, -rep_cap, -rep_val                                                                                         |
+|   2018 |  -2.3 |  -1.5 |     -5   | -r1, -r1rel, hi52, low_vol, -val_surge, pension60_cap, -fo_accel_cap, frgn_hold_chg60, -rep_val                                                |
+|   2019 |   6   |   4.3 |      2.8 | op_g, opm_chg, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, -orgn20_cap, supply90, -fo_accel_cap, frgn_hold_chg60, -rep_val       |
+|   2020 |  -1.2 |  -2.5 |    -11.3 | op_g, opm_chg, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, frgn_hold_chg60, -rep_val                                             |
+|   2021 |  -1.3 |  -0.3 |     -1   | op_g, opm_chg, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, -exp_g3, -fo_accel_cap, -rep_val                                           |
+|   2022 |  -1.7 |  -1.7 |     -5.7 | op_g, opm_chg, bp, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, supply90, -exp_g3, -fo_accel_cap, frgn_hold_chg60, -rep_val       |
+|   2023 |   1.3 |   2.4 |     -2.4 | op_g, opm_chg, ep, bp, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, supply90, -fo_accel_cap, frgn_hold_chg60, -rep_val            |
+|   2024 |   2.4 |   4.5 |      2   | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, buyback90, supply90, frgn_hold_chg60, -rep_val |
+|   2025 |  -1.7 |  -3.5 |     -9.7 | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, buyback90, supply90, frgn_hold_chg60, -rep_val |
+|   2026 |   3.6 |  11.5 |      0.1 | op_g, opm_chg, roe, ep, bp, op_yield, -r1, -rs3, -r1rel, hi52, low_vol, -val_surge, frgn60_cap, buyback90, supply90, frgn_hold_chg60, -rep_val |
 

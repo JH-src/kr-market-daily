@@ -1,11 +1,10 @@
 {
- "asof": "2026-10-19",
+ "asof": "2026-10-20",
  "variant": "주도·과열|영업이익증가|섹터당2",
  "scope": "주도·과열",
  "gate": "영업이익증가",
  "cap_per_sector": 2,
  "weights": {
-  "ry": 1,
   "op_g": 1,
   "opm_chg": 1,
   "roe": 1,
@@ -13,15 +12,17 @@
   "bp": 1,
   "op_yield": 1,
   "rs3": -1,
-  "r1rel": -1,
   "hi52": 1,
   "low_vol": 1,
   "val_surge": -1,
-  "major_foreign90": 1,
-  "buyback90": 1
+  "frgn60_cap": 1,
+  "buyback90": 1,
+  "fo60_cap": 1,
+  "fo_accel_cap": -1,
+  "frgn_hold_chg60": 1,
+  "rep_val": -1
  },
  "desc": {
-  "ry": "최근 분기 매출 전년비",
   "op_g": "영업이익 전년비(전년 흑자만)",
   "opm_chg": "영업이익률 개선폭",
   "roe": "자기자본이익률",
@@ -29,11 +30,14 @@
   "bp": "1/PBR",
   "op_yield": "1/(시총/영업이익)",
   "rs3": "섹터 대비 3개월",
-  "r1rel": "섹터 대비 1개월",
   "hi52": "52주 고점 근접",
   "low_vol": "낮은 변동성",
   "val_surge": "거래대금 급증",
-  "major_foreign90": "90일 내 외국계 5% 공시 건수",
-  "buyback90": "90일 내 자사주 취득 결정"
+  "frgn60_cap": "외국인 60일 순매수/시총",
+  "buyback90": "90일 내 자사주 취득 결정",
+  "fo60_cap": "외국인+기관 60일 순매수/시총",
+  "fo_accel_cap": "외국인+기관 매수 가속(최근 20일 vs 그 전 40일)",
+  "frgn_hold_chg60": "외국인 보유비율 60일 변화(%p)",
+  "rep_val": "섹터 안 거래대금 순위(대표성)"
  }
 }
