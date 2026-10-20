@@ -166,6 +166,15 @@ def build():
     nS = pd.DataFrame({s: uni[sec.index[sec == s]].sum(axis=1) for s in secs})
     S['sec_r1'] = L / L.shift(21) - 1; S['sec_r3'] = L / L.shift(63) - 1
     S['sec_persist20'] = persist(L, ma20)
+    S['rs_w1'] = (L / L.shift(5) - 1).sub(k / k.shift(5) - 1, axis=0)
+    S['rs_m1'] = (L / L.shift(21) - 1).sub(k / k.shift(21) - 1, axis=0)
+    S['rs_m3'] = (L / L.shift(63) - 1).sub(k / k.shift(63) - 1, axis=0)
+    dL = L.diff(); u_ = dL.clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean(); d_ = (-dL.clip(upper=0)).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    S['sec_rsi'] = 100 - 100 / (1 + u_ / d_)
+    vS = pd.DataFrame({s: val[sec.index[sec == s]].sum(axis=1, min_count=1) for s in secs})
+    S['sec_val_chg'] = vS.rolling(20, min_periods=15).mean() / vS.rolling(120, min_periods=60).mean()
+    tot = vS.sum(axis=1)
+    S['sec_val_share_chg'] = vS.div(tot, axis=0).rolling(20, min_periods=15).mean() / vS.div(tot, axis=0).rolling(120, min_periods=60).mean()
     # 섹터 대장(시총 상위 3) 종목들의 20일선 위 흐름 평균
     S['lead_persist20'] = pd.DataFrame({s: X['persist20'][sec.index[sec == s]].where(rc[sec.index[sec == s]] <= 3).mean(axis=1) for s in secs})
     S['sec_above60_share'] = pd.DataFrame({s: (X['g60'][sec.index[sec == s]].where(uni[sec.index[sec == s]]) > 0).mean(axis=1) for s in secs})
@@ -248,10 +257,97 @@ def random_inter():
             'tie': str(rng.choice(TIEB)), 'N': int(rng.choice([5, 10])), 'cap': int(rng.choice([2, 3]))}
 
 
+ST_AX = {'1주강도': 'rs_w1', '1개월강도': 'rs_m1', '3개월강도': 'rs_m3', '20일선흐름': 'sec_persist20', '거래대금증가': 'sec_val_chg',
+         '거래대금비중증가': 'sec_val_share_chg', '외기60일': 'sf_fo60', '외기20일': 'sf_fo20', '외기가속': 'sf_accel', 'RSI': 'sec_rsi', '60일선위비율': 'tp_above60'}
+REP = {'시총1위': 'rep_cap', '거래대금1위': 'rep_val', '외기60일1위': 'fo60_cap'}
+CROWD = ['없음', '외기60일상위20%', 'RSI70+', '1개월급등상위20%', '셋중하나']
+VAL = ['bp', 'ep', 'op_yield', 'roe', 'op_g', 'opm_chg', 'low_vol']
+
+
+def random_state():
+    ax = sorted(rng.choice(list(ST_AX), size=int(rng.integers(2, 6)), replace=False).tolist())
+    K = int(rng.choice([2, 3, 5]))
+    return {'mode': '2단계', 'axes': ax, 'K': K, 'Kout': int(K * rng.choice([1.5, 2, 3])), 'brk': bool(rng.random() < 0.6),
+            'rsi_cap': bool(rng.random() < 0.5), 'rep': str(rng.choice(list(REP))), 'crowd': str(rng.choice(CROWD)),
+            'm': int(rng.choice([1, 2])), 'lag': bool(rng.random() < 0.5), 'profit': bool(rng.random() < 0.6),
+            'val': sorted(rng.choice(VAL, size=int(rng.integers(3, 8)), replace=False).tolist())}
+
+
 def random_method():
-    if rng.random() < 0.7:
+    u = rng.random()
+    if u < 0.5:
+        return random_state()
+    if u < 0.85:
         return random_inter()
     return _random_score()
+
+
+def state_sectors(m, S, meta):
+    """주도 섹터를 상태로 관리: 여러 기간·거래대금·RSI·외기 수급 순위로 들어오고(K 안), 순위가 Kout 밖으로 밀리거나 꺾이면(4일 연속 20일선 이탈) 나감."""
+    secs = meta['secs']
+    ok = (meta['nS'][secs] >= 5)
+    sc = sum(S[ST_AX[a]][secs].where(ok).rank(axis=1, pct=True) for a in m['axes']) / len(m['axes'])
+    if m['rsi_cap']:
+        sc = sc.where(~(S['sec_rsi'][secs] > 80), sc - 0.3)      # 과열(RSI 80 넘음)은 점수 깎음
+    rk = sc.rank(axis=1, ascending=False).values
+    brk = (S['sec_persist20'][secs] == 0).values if m['brk'] else np.zeros(rk.shape, bool)
+    held = np.zeros(len(secs), bool)
+    out = np.zeros(rk.shape, bool)
+    for i in range(rk.shape[0]):
+        r = rk[i]
+        stay = held & (r <= m['Kout']) & ~brk[i]
+        new = (r <= m['K']) & ~brk[i]
+        h = stay | new
+        if h.sum() > m['K'] + 2:          # 너무 많아지면 순위 좋은 것만
+            keep = np.argsort(np.where(h, r, 1e9))[:m['K'] + 2]
+            h = np.zeros_like(h); h[keep] = True
+        held = h; out[i] = h
+    return pd.DataFrame(out, index=sc.index, columns=secs)
+
+
+def evaluate_state(m, X, Y, S, meta):
+    uni, sec, idx = meta['uni'], meta['sec'], meta['idx']
+    okS = state_sectors(m, S, meta)
+    ok = sec_to_stock(okS, meta) & uni
+    if m['profit']:
+        ok &= (X['op_g'] > 0) | (X['opm_chg'] > 0)
+    rep = X[REP[m['rep']]].where(ok)
+    pr = lambda k: X[k].rank(axis=1, pct=True)
+    crowd = pd.DataFrame(False, index=idx, columns=uni.columns)
+    if m['crowd'] in ('외기60일상위20%', '셋중하나'):
+        crowd |= pr('fo60_cap') > 0.8
+    if m['crowd'] in ('RSI70+', '셋중하나'):
+        crowd |= X['rsi'] > 70
+    if m['crowd'] in ('1개월급등상위20%', '셋중하나'):
+        crowd |= pr('r1rel') > 0.8
+    vs = sum(X[k].where(ok).rank(axis=1, pct=True).fillna(0) for k in m['val'])
+    if m['lag']:
+        vs = vs.where(X['rs3'] < 0)        # 섹터보다 덜 오른 것만
+    vs = vs.where(ok)
+    score = pd.DataFrame(np.nan, index=idx, columns=uni.columns, dtype='float32')
+    for s_ in meta['secs']:
+        cols = sec.index[sec == s_]
+        if not okS[s_].any():
+            continue
+        lr = rep[cols].rank(axis=1, ascending=False, method='first')
+        lead = (lr == 1)
+        lead_crowded = (lead & crowd[cols]).any(axis=1)
+        vr = vs[cols].where(~lead).rank(axis=1, ascending=False, method='first')
+        pick_lead = lead & ~crowd[cols]
+        pick_val = (vr <= m['m']) & lead_crowded.values[:, None]
+        sc_ = pd.DataFrame(np.nan, index=idx, columns=cols)
+        sc_[pick_val] = 1.0; sc_[pick_lead] = 2.0
+        score[cols] = sc_.values
+    mm = dict(m, cap=99, N=999)
+    return finish(mm, score, Y, meta)
+
+
+def evaluate(m, X, Y, S, meta, signs):
+    if m.get('mode') == '2단계':
+        return evaluate_state(m, X, Y, S, meta)
+    if m.get('mode') == '교집합':
+        return evaluate_inter(m, X, Y, S, meta)
+    return evaluate_score(m, X, Y, S, meta, signs)
 
 
 def _random_score():
@@ -263,6 +359,9 @@ def _random_score():
 
 
 def mname(m):
+    if m.get('mode') == '2단계':
+        return (f"2단계|섹:{'+'.join(m['axes'])}|K{m['K']}~{m['Kout']}|{'꺾임교체' if m['brk'] else '-'}|{'과열감점' if m['rsi_cap'] else '-'}"
+                f"|대장:{m['rep']}|꽉참:{m['crowd']}|가치{m['m']}:{','.join(m['val'])}{'(덜오름)' if m['lag'] else ''}|{'이익' if m['profit'] else '-'}")
     if m.get('mode') == '교집합':
         return f"교집합|{'∩'.join(m['conds'])}|순서:{m['tie']}|N{m['N']}c{m['cap']}"
     return f"{m['gate']}|{'+'.join(m['axes'])}|K{'전체' if m['K'] == 99 else m['K']}|{','.join(m['facs'])}|N{m['N']}c{m['cap']}|{'이익' if m['profit'] else '-'}|{'안달림' if m['noran'] else '-'}|{m['sign']}"
@@ -343,10 +442,7 @@ def cond(c, X, S, meta):
     return _CC[c]
 
 
-def evaluate(m, X, Y, S, meta, signs):
-    if m.get('mode') == '교집합':
-        return evaluate_inter(m, X, Y, S, meta)
-    return evaluate_score(m, X, Y, S, meta, signs)
+
 
 
 def evaluate_inter(m, X, Y, S, meta):
