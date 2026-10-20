@@ -3,10 +3,16 @@ on:
   workflow_dispatch:
     inputs:
       deadline:
-        description: '탐색 마감(UTC)'
-        default: '2026-10-19T19:55'
+        description: '탐색 마감(UTC) 또는 auto(5시간)'
+        default: 'auto'
+  schedule:
+    - cron: '5 */6 * * *'    # 6시간마다 새 방법을 만들어 이어서 경쟁(결과는 누적)
 permissions:
   contents: write
+  actions: read
+concurrency:
+  group: daily-search
+  cancel-in-progress: false
 jobs:
   search:
     runs-on: ubuntu-latest
@@ -29,13 +35,13 @@ jobs:
           python3 -m sim.enrich_flows || echo "수급 생략"
           python3 -m sim.enrich_extra || echo "추가 생략"
       - name: 탐색
-        run: cd src && python3 -m sim.daily_search ${{ inputs.deadline }} ${{ matrix.shard }} 2>&1 | grep -v -i warn | tail -30
+        run: cd src && python3 -m sim.daily_search ${{ inputs.deadline || 'auto' }} ${{ github.run_id }}_${{ matrix.shard }} 2>&1 | grep -v -i warn | tail -30
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: store-${{ matrix.shard }}
+          name: store-${{ github.run_id }}-${{ matrix.shard }}
           path: /tmp/out/store_*.pkl
-          retention-days: 7
+          retention-days: 90
   merge:
     needs: search
     if: always()
@@ -43,9 +49,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install -q pandas numpy tabulate
-      - uses: actions/download-artifact@v4
-        with:
-          path: /tmp/stores
+      - name: 지금까지 모든 회차 결과 내려받기(누적)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/stores
+          gh api --paginate "repos/${{ github.repository }}/actions/artifacts?per_page=100" --jq '.artifacts[]|select(.name|startswith("store-"))|select(.expired==false)|"\(.id) \(.name)"' > /tmp/arts.txt
+          wc -l /tmp/arts.txt
+          while read id name; do mkdir -p /tmp/stores/$name; gh api repos/${{ github.repository }}/actions/artifacts/$id/zip > /tmp/a.zip && unzip -oq /tmp/a.zip -d /tmp/stores/$name; done < /tmp/arts.txt
+          du -sh /tmp/stores
       - name: 합치기·걷기식
         run: cd src && python3 -m sim.daily_search merge /tmp/stores 2>&1 | tail -30
       - name: 결과 저장

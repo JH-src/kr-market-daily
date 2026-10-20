@@ -190,7 +190,25 @@ POOL = ['low_vol', 'hi52', 'mom12_1', 'val_surge', 'r1rel', 'rs3', 'r1', 'rep_ca
         'orgn20_cap', 'pension60_cap'] + FUND
 
 
+SEC_CONDS = ['섹:3개월추세', '섹:그날강함', '섹:꺾임아님', '섹:초입', '섹:가격상위5', '섹:수급가속', '섹:수급유입60', '섹:이익확산']
+STK_CONDS = ['영업이익증가', '이익률개선', '신고가-10%내', '신고가-25%내', '저변동상위50%', '외기20일매수', '외기60일매수', '외기가속', '연기금60일매수',
+             '외국인60일매수', '섹터시총3위내', '섹터거래대금3위내', '안달림', '섹터대비1개월덜오름', 'PBR낮은50%', 'ROE상위50%', '자사주90일', '외국계5%90일', '이익수익률상위50%']
+TIEB = ['low_vol', 'hi52', 'fo_accel', 'cap']
+
+
+def random_inter():
+    k_s = int(rng.integers(0, 3)); k_t = int(rng.integers(1, 5))
+    return {'mode': '교집합', 'conds': sorted(rng.choice(SEC_CONDS, size=k_s, replace=False).tolist() + rng.choice(STK_CONDS, size=k_t, replace=False).tolist()),
+            'tie': str(rng.choice(TIEB)), 'N': int(rng.choice([5, 10])), 'cap': int(rng.choice([2, 3]))}
+
+
 def random_method():
+    if rng.random() < 0.7:
+        return random_inter()
+    return _random_score()
+
+
+def _random_score():
     m = {'gate': rng.choice(SEC_GATES), 'axes': sorted(rng.choice(list(SEC_AXES), size=rng.integers(1, 4), replace=False).tolist()),
          'K': int(rng.choice([2, 3, 5, 8, 99])), 'facs': sorted(rng.choice(POOL, size=rng.integers(2, 9), replace=False).tolist()),
          'N': int(rng.choice([5, 8, 12])), 'cap': int(rng.choice([1, 2, 3])), 'profit': bool(rng.random() < 0.6), 'noran': bool(rng.random() < 0.6),
@@ -199,6 +217,8 @@ def random_method():
 
 
 def mname(m):
+    if m.get('mode') == '교집합':
+        return f"교집합|{'∩'.join(m['conds'])}|순서:{m['tie']}|N{m['N']}c{m['cap']}"
     return f"{m['gate']}|{'+'.join(m['axes'])}|K{'전체' if m['K'] == 99 else m['K']}|{','.join(m['facs'])}|N{m['N']}c{m['cap']}|{'이익' if m['profit'] else '-'}|{'안달림' if m['noran'] else '-'}|{m['sign']}"
 
 
@@ -221,7 +241,60 @@ def sector_mask(m, S, meta):
     return ok
 
 
+def sec_to_stock(B, meta):
+    sec = meta['sec']
+    out = pd.DataFrame(False, index=meta['idx'], columns=meta['uni'].columns)
+    for s in meta['secs']:
+        cols = sec.index[sec == s]
+        out[cols] = np.repeat(B[s].fillna(False).values[:, None].astype(bool), len(cols), axis=1)
+    return out
+
+
+_CC = {}
+
+
+def cond(c, X, S, meta):
+    if c in _CC:
+        return _CC[c]
+    secs = meta['secs']
+    pct = lambda k: X[k].rank(axis=1, pct=True)
+    tr = (S['tp_above60'][secs] >= 0.6) & (S['tp_align'][secs] >= 0.5)
+    m = {'섹:3개월추세': lambda: sec_to_stock(tr, meta), '섹:그날강함': lambda: sec_to_stock(S['stage_strong'][secs] > 0, meta),
+         '섹:꺾임아님': lambda: sec_to_stock((S['br_below'][secs].fillna(0) + S['br_dead'][secs].fillna(0) + S['br_flow'][secs].fillna(0)) < 2, meta),
+         '섹:초입': lambda: sec_to_stock(S['rc_start'][secs] > 0, meta),
+         '섹:가격상위5': lambda: sec_to_stock(((S['sp_slope40w'][secs].rank(axis=1, pct=True) + S['sp_ret120'][secs].rank(axis=1, pct=True)).rank(axis=1, ascending=False, method='first') <= 5) & (meta['nS'][secs] >= 5), meta),
+         '섹:수급가속': lambda: sec_to_stock(S['sf_accel'][secs] > 0, meta), '섹:수급유입60': lambda: sec_to_stock(S['sf_fo60'][secs] > 0, meta),
+         '섹:이익확산': lambda: sec_to_stock(S['se_opg'][secs].gt(S['se_opg'][secs].median(axis=1), axis=0), meta) if 'se_opg' in S else None,
+         '영업이익증가': lambda: X['op_g'] > 0, '이익률개선': lambda: X['opm_chg'] > 0, '신고가-10%내': lambda: X['hi52'] > -0.1, '신고가-25%내': lambda: X['hi52'] > -0.25,
+         '저변동상위50%': lambda: pct('low_vol') > 0.5, '외기20일매수': lambda: X['fo20_cap'] > 0, '외기60일매수': lambda: X['fo60_cap'] > 0, '외기가속': lambda: X['fo_accel'] > 0,
+         '연기금60일매수': lambda: X['pension60_cap'] > 0, '외국인60일매수': lambda: X['frgn60_cap'] > 0, '섹터시총3위내': lambda: X['rep_cap'] >= -3,
+         '섹터거래대금3위내': lambda: X['rep_val'] >= -3, '안달림': lambda: ~((pct('r1rel') > 0.8) | (pct('val_surge') > 0.8)), '섹터대비1개월덜오름': lambda: X['r1rel'] < 0,
+         'PBR낮은50%': lambda: pct('bp') > 0.5, 'ROE상위50%': lambda: pct('roe') > 0.5, '자사주90일': lambda: X['buyback90'] > 0, '외국계5%90일': lambda: X['major_foreign90'] > 0,
+         '이익수익률상위50%': lambda: pct('ep') > 0.5}
+    v = m[c]()
+    _CC[c] = v.astype(bool) if v is not None else None
+    return _CC[c]
+
+
 def evaluate(m, X, Y, S, meta, signs):
+    if m.get('mode') == '교집합':
+        return evaluate_inter(m, X, Y, S, meta)
+    return evaluate_score(m, X, Y, S, meta, signs)
+
+
+def evaluate_inter(m, X, Y, S, meta):
+    uni = meta['uni']
+    ok = uni.copy()
+    for c in m['conds']:
+        v = cond(c, X, S, meta)
+        if v is None:
+            return None
+        ok &= v
+    score = (meta['cap'] if m['tie'] == 'cap' else X[m['tie']]).where(ok)
+    return finish(m, score, Y, meta)
+
+
+def evaluate_score(m, X, Y, S, meta, signs):
     idx, uni, sec = meta['idx'], meta['uni'], meta['sec']
     okS = sector_mask(m, S, meta)
     # 섹터 허용 → 종목 마스크
@@ -251,6 +324,11 @@ def evaluate(m, X, Y, S, meta, signs):
     if used == 0:
         return None
     score = score.where(ok)
+    return finish(m, score, Y, meta)
+
+
+def finish(m, score, Y, meta):
+    idx, uni, sec = meta['idx'], meta['uni'], meta['sec']
     # 섹터당 cap, 전체 N
     srank = pd.DataFrame(np.nan, index=idx, columns=uni.columns, dtype='float32')
     for s in meta['secs']:
@@ -276,6 +354,7 @@ def evaluate(m, X, Y, S, meta, signs):
     res['stab'] = (pick & prev).sum(axis=1) / n.replace(0, np.nan)
     R = pd.DataFrame(res)
     R.loc[R['n'] == 0, [c for c in R.columns if c != 'n']] = np.nan
+    R = R.resample('ME').mean().astype('float32')        # 월 평균으로 저장(누적 용량 줄이기)
     return R, pick
 
 
@@ -295,8 +374,8 @@ def summarize(name, R):
 
 def walkforward(store, start=2017):
     """해마다 이전 해들의 연도 성과(63일 결과 확인 뒤)로 방법 고르기: 1등, 상위5 평균, 상위20 평균."""
-    names = list(store)
-    Yall = pd.DataFrame({k: yearly_stats(v)['ex63'] for k, v in store.items()})
+    names = [k for k, v in store.items() if v['n'].mean() >= 2]     # 평균 2종목 미만은 우연이 커서 제외
+    Yall = pd.DataFrame({k: yearly_stats(store[k])['ex63'] for k in names})
     rows, picks = [], {}
     for Yr in range(start, int(Yall.index.max()) + 1):
         cut = pd.Timestamp(f'{Yr}-01-01') - pd.Timedelta(days=95)
@@ -310,12 +389,28 @@ def walkforward(store, start=2017):
         if len(cand) < 20:
             cand = t.sort_values(ascending=False)
         top = list(cand.index[:20]); picks[Yr] = top
+        pr = Yall.loc[Yr].rank(pct=True)     # 그해 전체 방법 중 위치(운이면 50% 근처, 실력이면 꾸준히 위)
         rows.append({'year': Yr, '1등': Yall.at[Yr, top[0]], '상위5': Yall.loc[Yr, top[:5]].mean(), '상위20': Yall.loc[Yr, top].mean(),
-                     '전체 평균': Yall.loc[Yr].mean(), '1등 방법': top[0]})
+                     '전체 평균': Yall.loc[Yr].mean(), '상위20 그해 백분위': pr[top].mean() * 100, '1등 그해 백분위': pr[top[0]] * 100, '1등 방법': top[0]})
     return pd.DataFrame(rows).set_index('year'), picks
 
 
+def inter_marg(T):
+    x = T[T.index.str.startswith('교집합')]
+    if x.empty:
+        return pd.DataFrame()
+    base = x['63일 16~23'].mean(); bf = x['수급유입 63'].mean()
+    rows = []
+    for c in SEC_CONDS + STK_CONDS:
+        y = x[x.index.str.contains(c, regex=False)]
+        if len(y):
+            rows.append({'조건': c, '방법 수': len(y), '63일 차이': y['63일 16~23'].mean() - base, '플러스 해': y['플러스 해'].mean(),
+                         '수급유입 차이': y['수급유입 63'].mean() - bf, '24~': y['24~ 63일'].mean()})
+    return pd.DataFrame(rows).sort_values('63일 차이', ascending=False)
+
+
 def marginals(T):
+    T = T[~T.index.str.startswith('교집합')]
     rows = []
     parts = T.index.str.split('|')
     dims = {'섹터 관문': 0, '섹터 축': 1, '섹터 수': 2, '구조': 4, '이익 관문': 5, '안 달린 종목': 6, '부호': 7}
@@ -348,7 +443,9 @@ def write(store, picks_now, meta, IC, signs, wf, wfp, elapsed):
          '## 완전 걷기식 결과(해마다 이전 성과로 방법 고르기)', '',
          f"2017~2023: 1등 {pre['1등'].mean():+.2f}%p({(pre['1등'] > 0).sum()}/{len(pre)}) · 상위5 {pre['상위5'].mean():+.2f}%p({(pre['상위5'] > 0).sum()}/{len(pre)}) · 상위20 {pre['상위20'].mean():+.2f}%p({(pre['상위20'] > 0).sum()}/{len(pre)}) · 전체 평균 {pre['전체 평균'].mean():+.2f}%p",
          f"2024~: 1등 {wf.loc[2024:, '1등'].mean():+.2f}%p · 상위5 {wf.loc[2024:, '상위5'].mean():+.2f}%p · 상위20 {wf.loc[2024:, '상위20'].mean():+.2f}%p", '',
-         wf.round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
+         '운인지 실력인지: 걷기식으로 고른 방법들이 그해 전체 방법 중 몇 % 위치였나(50% = 운과 같음). 꾸준히 60% 이상이면 실력 쪽.', '',
+         f"2017~2023 상위20 평균 백분위 {pre['상위20 그해 백분위'].mean():.0f}%, 1등 평균 백분위 {pre['1등 그해 백분위'].mean():.0f}%, 상위20이 50% 넘은 해 {(pre['상위20 그해 백분위'] > 50).sum()}/{len(pre)}", '',
+         wf.round(2).to_markdown(), '', '## 교집합 조건별 효과(그 조건이 들어간 방법 평균 - 전체 평균, 63일 16~23 %p)', '', inter_marg(T).round(2).to_markdown(index=False), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
          '## 상위 30(사후 순위, 참고용)', '', T.head(30).round(2).to_markdown(), '',
          '## 요소 부호(올해 기준, 걷기식)', '', ', '.join(f"{k}{'+' if v > 0 else '-'}" for k, v in signs.get(meta['idx'].max().year, {}).items() if v), '']
     if picks_now:
@@ -363,7 +460,7 @@ def write(store, picks_now, meta, IC, signs, wf, wfp, elapsed):
 
 def main(deadline, shard=None):
     global rng
-    rng = np.random.default_rng(int(time.time()) + 7919 * int(shard or 0))
+    rng = np.random.default_rng(int(time.time()) + (abs(hash(str(shard))) % 100000))
     t0 = time.time()
     X, Y, S, meta = build()
     IC, signs = yearly_ic(X, Y, meta)
@@ -411,8 +508,11 @@ def dump(store, pk, meta, IC, signs, shard, t0):
 
 def merge(paths):
     store, pk, meta, signs, el = {}, {}, None, None, 0
-    for p in paths:
-        d = pickle.load(open(p, 'rb'))
+    for p in sorted(paths, key=os.path.getmtime):
+        try:
+            d = pickle.load(open(p, 'rb'))
+        except Exception:
+            continue
         store.update(d['store']); meta = d['meta']; signs = d['signs']; el = max(el, d['sec'])
         for k, v in d['pk'].items():
             pk[k] = pd.Series(True, index=v)
@@ -436,5 +536,5 @@ if __name__ == '__main__':
     if sys.argv[1] == 'merge':
         merge(sorted(glob.glob(sys.argv[2] + '/**/store_*.pkl', recursive=True)))
     else:
-        dl = pd.Timestamp(sys.argv[1], tz='UTC').timestamp()
+        dl = time.time() + 4.6 * 3600 if sys.argv[1] == 'auto' else pd.Timestamp(sys.argv[1], tz='UTC').timestamp()
         main(dl, sys.argv[2] if len(sys.argv) > 2 else None)
