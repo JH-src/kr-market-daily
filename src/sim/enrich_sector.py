@@ -33,6 +33,9 @@ def main():
     run_up = up20.apply(lambda c: c.groupby((c == 0).cumsum()).cumsum())
     cross = ((L > ma20) & (L.shift(1) <= ma20.shift(1))).astype(int).rolling(20, min_periods=1).max()
     F['rc_start'] = ((run_up >= 10) & (cross > 0) & (ma20 > ma20.shift(5))).astype(float).where(ma20.notna())   # 초입: 20일선을 최근 20일 안에 넘고 10일 이상 유지, 20일선 상승
+    from .daily_search import persist
+    F['persist20'] = persist(L, ma20)                      # 20일선 위 흐름 일수(4일 연속 이탈 전까지)
+    F['rs1'] = (L / L.shift(21) - 1).sub(k / k.shift(21) - 1, axis=0)   # 코스피 대비 1개월
     me = sorted(set([pd.Timestamp(t) for t in C.month_ends] + list(L.index[-10:])))   # 월말 + 최근 10거래일(오늘 판정용)
     rows = []
     for t in me:

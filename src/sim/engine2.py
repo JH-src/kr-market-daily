@@ -16,7 +16,7 @@ from sim import search as S
 from sim.factors import F, ROOT
 
 N = 6
-SCOPES = ('전체', '주도·초기', '주도·과열', '주도·과열(동일가중)', '섹터점수 상위5', '추세흐름', '추세흐름∪주도·과열')
+SCOPES = ('전체', '주도·초기', '주도·과열', '주도·과열(동일가중)', '섹터점수 상위5', '추세흐름', '추세흐름∪주도·과열', '20일선흐름', '20일선흐름+1개월강도', '20일선흐름+1개월상위8')
 GATES = {
     '없음': lambda g: pd.Series(True, index=g.index),
     '고점-30%이내': lambda g: g['_hi52'] > -30,
@@ -55,8 +55,9 @@ def load():
     sfp = os.path.join(os.environ.get('SIM_CACHE', '/tmp/sim_cache'), 'sector_feat.pkl')
     if os.path.exists(sfp):
         import pickle as _pk
-        sf = _pk.load(open(sfp, 'rb'))[['date', 'sector', 'tp_above60', 'tp_align']]
-        d = d.drop(columns=[c for c in ('tp_above60', 'tp_align') if c in d]).merge(sf, on=['date', 'sector'], how='left')
+        sf = _pk.load(open(sfp, 'rb'))
+        sf = sf[[c for c in ('date', 'sector', 'tp_above60', 'tp_align', 'persist20', 'rs1') if c in sf]]
+        d = d.drop(columns=[c for c in ('tp_above60', 'tp_align', 'persist20', 'rs1') if c in d]).merge(sf, on=['date', 'sector'], how='left')
     # 시가총액 가중 기준선(후보군 전체)
     for h in (63, 126):
         cw = d.groupby('date').apply(lambda g: (g['cap'] * g[f'ret{h}']).sum() / g['cap'][g[f'ret{h}'].notna()].sum())
@@ -117,6 +118,17 @@ def scope_df(d, sc):
         return d[d['stage'].isin(['주도', '과열 주의'])]
     if sc == '주도·과열(동일가중)':
         return d[d['stage_ew'].isin(['주도', '과열 주의'])] if 'stage_ew' in d else d.iloc[0:0]
+    if sc.startswith('20일선흐름'):
+        if 'persist20' not in d:
+            return d.iloc[0:0]
+        ok = d['persist20'] >= 15                       # 섹터 지수가 20일선 위 흐름을 15거래일 이상 유지(기간 고정 없음)
+        if sc == '20일선흐름+1개월강도':
+            ok &= d['rs1'] > 0
+        if sc == '20일선흐름+1개월상위8':
+            r = d[['date', 'sector', 'rs1']].drop_duplicates(['date', 'sector'])
+            r['rk'] = r.groupby('date')['rs1'].rank(ascending=False)
+            ok &= d.merge(r[['date', 'sector', 'rk']], on=['date', 'sector'], how='left')['rk'].values <= 8
+        return d[ok & (d['sector'] != '기타')]
     if sc in ('추세흐름', '추세흐름∪주도·과열'):
         if 'tp_above60' not in d:
             return d.iloc[0:0]
