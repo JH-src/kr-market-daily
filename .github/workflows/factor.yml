@@ -28,6 +28,7 @@ jobs:
           python3 -m sim.enrich
           python3 -m sim.enrich_flows || echo "수급 지표 생략"
           python3 -m sim.enrich_extra || echo "추가 요소 생략"
+          python3 -m sim.enrich_sector || echo "섹터 흐름 생략"
       - name: 섹터 판정 검증(먼저)
         env:
           SIM_CACHE: /tmp/simcache

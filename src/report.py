@@ -988,8 +988,27 @@ def sim_picks_v2(asof):
     st = SE.sector_stage(C, i)
     reg = SE.regime(C, i)
     n = SIM_LOGIC_V2['n_by_regime'][reg]
-    stages = ('주도', '과열 주의') if cfg.get('scope', '주도·과열') == '주도·과열' else ('주도', '초기')
-    cand = [c for c in uni if st.get(C.sec.get(c), {}).get('stage') in stages and C.sec.get(c) != '기타']
+    scope = cfg.get('scope', '주도·과열')
+    stages = ('주도', '과열 주의') if scope in ('주도·과열', '추세흐름∪주도·과열') else ('주도', '초기')
+    flow_ok = set()
+    if scope.startswith('추세흐름'):
+        # 섹터 3개월 흐름: 최근 60거래일 중 60일선 위 60% 이상 + 20일선>60일선 50% 이상
+        L = C.secidx.iloc[:i + 1]
+        ma20, ma60 = L.rolling(20).mean(), L.rolling(60).mean()
+        a60 = (L > ma60).astype(float).where(ma60.notna()).iloc[-60:].mean()
+        al = (ma20 > ma60).astype(float).where(ma60.notna()).iloc[-60:].mean()
+        flow_ok = set(a60.index[(a60 >= 0.6) & (al >= 0.5)])
+        for s_ in flow_ok:
+            st.setdefault(s_, {'stage': '흐름', 'm1': np.nan, 'm3': np.nan})
+    def _in(s_):
+        if s_ is None or s_ == '기타':
+            return False
+        if scope == '추세흐름':
+            return s_ in flow_ok
+        if scope == '추세흐름∪주도·과열':
+            return s_ in flow_ok or st.get(s_, {}).get('stage') in stages
+        return st.get(s_, {}).get('stage') in stages
+    cand = [c for c in uni if _in(C.sec.get(c))]
     if not cand:
         return {'rows': [], 'reg': reg, 'n': n, 'n_cand': 0, 'stages': st, 'asof': t, 'cfg': cfg}
     P = C.P.iloc[:i + 1][cand]

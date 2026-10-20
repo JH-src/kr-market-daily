@@ -16,7 +16,7 @@ from sim import search as S
 from sim.factors import F, ROOT
 
 N = 6
-SCOPES = ('전체', '주도·초기', '주도·과열', '주도·과열(동일가중)', '섹터점수 상위5')
+SCOPES = ('전체', '주도·초기', '주도·과열', '주도·과열(동일가중)', '섹터점수 상위5', '추세흐름', '추세흐름∪주도·과열')
 GATES = {
     '없음': lambda g: pd.Series(True, index=g.index),
     '고점-30%이내': lambda g: g['_hi52'] > -30,
@@ -51,6 +51,12 @@ def load():
     sg['sec_score'] = sg.groupby('date')[['opg', 'opm', 'nh']].rank(pct=True).mean(axis=1)
     sg['sec_rank'] = sg.groupby('date')['sec_score'].rank(ascending=False)
     d = d.merge(sg[['date', 'sector', 'sec_rank']], on=['date', 'sector'], how='left')
+    # 섹터 3개월 흐름(최근 60거래일 중 60일선 위 비율·정배열 비율) — sim.enrich_sector 결과
+    sfp = os.path.join(os.environ.get('SIM_CACHE', '/tmp/sim_cache'), 'sector_feat.pkl')
+    if os.path.exists(sfp):
+        import pickle as _pk
+        sf = _pk.load(open(sfp, 'rb'))[['date', 'sector', 'tp_above60', 'tp_align']]
+        d = d.drop(columns=[c for c in ('tp_above60', 'tp_align') if c in d]).merge(sf, on=['date', 'sector'], how='left')
     # 시가총액 가중 기준선(후보군 전체)
     for h in (63, 126):
         cw = d.groupby('date').apply(lambda g: (g['cap'] * g[f'ret{h}']).sum() / g['cap'][g[f'ret{h}'].notna()].sum())
@@ -111,6 +117,11 @@ def scope_df(d, sc):
         return d[d['stage'].isin(['주도', '과열 주의'])]
     if sc == '주도·과열(동일가중)':
         return d[d['stage_ew'].isin(['주도', '과열 주의'])] if 'stage_ew' in d else d.iloc[0:0]
+    if sc in ('추세흐름', '추세흐름∪주도·과열'):
+        if 'tp_above60' not in d:
+            return d.iloc[0:0]
+        tr = (d['tp_above60'] >= 0.6) & (d['tp_align'] >= 0.5)
+        return d[tr | d['stage'].isin(['주도', '과열 주의'])] if sc == '추세흐름∪주도·과열' else d[tr]
     if sc == '섹터점수 상위5':
         return d[d['sec_rank'] <= 5]
     if sc == '섹터점수 상위8':
@@ -161,7 +172,8 @@ def run():
     return d, keys, W, series, M, picks
 
 
-FIXED = '주도·과열|영업이익증가|섹터당2'   # 원칙: 섹터 먼저(주도·과열 = 강한 섹터) ∩ 실적 상승(영업이익 증가) + 섹터당 2종목 분산. 2016~2023 걷기식 7/8년 플러스, 2024~ +6.5%p
+FIXED = '추세흐름|영업이익증가|섹터당2'   # v2.1(2026-10-20): 섹터 판정을 그날 단계 대신 3개월 흐름으로. 이전: '주도·과열|영업이익증가|섹터당2'
+FIXED_PREV = '주도·과열|영업이익증가|섹터당2'   # 원칙: 섹터 먼저(주도·과열 = 강한 섹터) ∩ 실적 상승(영업이익 증가) + 섹터당 2종목 분산. 2016~2023 걷기식 7/8년 플러스, 2024~ +6.5%p
 
 
 def size_blend(d, base):
