@@ -1,6 +1,6 @@
 {
  "asof": "2026-10-19",
- "methods": 14469,
+ "methods": 27539,
  "top20": [
   "추세|가격+수급기세+확산|K5|buyback90,fo20_cap,opm_chg,rep_cap|N8c2|-|안달림|걷기식",
   "추세+초입|수급+이익+추세흐름|K8|fo20_cap,ry|N5c2|이익|안달림|걷기식",
@@ -8,122 +8,128 @@
   "추세+초입|수급기세+이익|K전체|accel_d,fo20_cap,fo_accel,orgn20_cap,roe,ry|N8c3|이익|안달림|걷기식",
   "추세+초입|수급+수급기세+확산|K5|buyback90,fo20_cap,fo_accel|N8c1|이익|안달림|걷기식",
   "추세+초입|가격+수급+확산|K8|bp,ep,hi52,op_yield,rep_val,supply90|N12c2|-|안달림|걷기식",
+  "추세+초입|가격+수급기세+이익|K5|bp,buyback90,fo_accel,op_g,orgn20_cap,r1rel,val_surge|N5c3|이익|-|걷기식+고정가점",
   "추세|가격|K5|bp,fo20_cap,hi52,opm_chg,r1,ry,supply90|N5c3|이익|-|걷기식+고정가점",
+  "추세+초입|가격+수급기세+확산|K5|accel_d,buyback90,fo20_cap,fo60_cap,low_vol,mom12_1,pension60_cap|N8c3|이익|안달림|걷기식",
   "추세-꺾임|가격+확산|K전체|accel_d,bp,fo20_cap,hi52,major_foreign90,pension60_cap,rep_val,supply90|N5c1|-|안달림|걷기식",
+  "추세+초입|가격+수급|K8|fo20_cap,supply90|N12c1|이익|안달림|걷기식",
   "추세|가격+추세흐름|K8|fo20_cap,mom12_1,orgn20_cap,supply90|N5c3|이익|안달림|걷기식",
+  "추세|이익+확산|K전체|hi52,supply90,val_surge|N8c2|-|안달림|걷기식+고정가점",
   "추세|가격|K5|fo20_cap,low_vol,mom12_1,op_g|N8c2|이익|-|걷기식",
+  "추세|가격+수급+이익|K5|fo20_cap,low_vol,orgn20_cap,rs3|N8c3|이익|-|걷기식",
+  "추세+초입|가격+수급+이익|K8|fo20_cap,hi52|N8c3|이익|안달림|걷기식+고정가점",
+  "추세+초입|수급+이익|K8|low_vol,op_g,orgn20_cap,pension60_cap,r1rel,rep_cap,supply90|N8c3|이익|안달림|걷기식",
   "추세+초입|확산|K8|fo_accel,frgn60_cap,low_vol,op_yield,rep_cap,rep_val,val_surge|N12c3|-|-|걷기식",
   "추세-꺾임|수급+확산|K8|accel_d,bp,buyback90,fo20_cap,fo_accel,major_foreign90,roe|N8c2|이익|-|걷기식",
-  "전체|수급기세|K5|buyback90,fo_accel,op_yield,rep_val,rs3,ry,supply90|N5c3|이익|안달림|걷기식",
-  "추세|가격+수급기세+이익|K3|accel_d,bp,buyback90,fo20_cap,fo_accel,opm_chg,roe|N8c3|이익|안달림|걷기식+고정가점",
-  "전체|수급+수급기세+이익|K8|fo20_cap,fo_accel,low_vol,major_foreign90,pension60_cap,roe,val_surge|N5c3|이익|-|걷기식+고정가점",
-  "추세+초입|가격+추세흐름|K전체|accel_d,fo_accel,r1,rep_val,roe,val_surge|N8c1|이익|-|걷기식",
-  "전체|가격+수급+수급기세|K8|accel_d,fo20_cap,low_vol,op_g,op_yield,opm_chg,r1|N5c3|-|안달림|걷기식",
-  "추세+초입|수급+수급기세+이익|K5|accel_d,bp,fo20_cap,mom12_1,orgn20_cap,rs3|N8c1|이익|안달림|걷기식",
-  "추세-꺾임|가격+이익+확산|K3|fo_accel,low_vol,mom12_1,opm_chg|N5c3|-|안달림|걷기식",
-  "추세|수급|K8|buyback90,low_vol,major_foreign90,rep_cap,rep_val,ry|N8c3|이익|-|걷기식"
+  "전체|수급기세|K5|buyback90,fo_accel,op_yield,rep_val,rs3,ry,supply90|N5c3|이익|안달림|걷기식"
  ],
  "picks": [
   {
    "code": "023590",
    "name": "다우기술",
    "sector": "인터넷·IT서비스",
-   "count": 13
+   "count": 15
   },
   {
    "code": "357120",
    "name": "코람코라이프인프라리츠",
    "sector": "부동산",
-   "count": 10
-  },
-  {
-   "code": "237880",
-   "name": "클리오",
-   "sector": "화장품",
-   "count": 9
+   "count": 11
   },
   {
    "code": "004170",
    "name": "신세계",
    "sector": "화장품",
-   "count": 6
+   "count": 8
   },
   {
-   "code": "400760",
-   "name": "NH올원리츠",
-   "sector": "부동산",
-   "count": 5
+   "code": "237880",
+   "name": "클리오",
+   "sector": "화장품",
+   "count": 7
   },
   {
    "code": "037270",
    "name": "YG PLUS",
    "sector": "인터넷·IT서비스",
-   "count": 4
+   "count": 6
   },
   {
    "code": "330590",
    "name": "롯데리츠",
    "sector": "부동산",
-   "count": 4
-  },
-  {
-   "code": "051900",
-   "name": "LG생활건강",
-   "sector": "화장품",
-   "count": 4
-  },
-  {
-   "code": "090430",
-   "name": "아모레퍼시픽",
-   "sector": "화장품",
-   "count": 3
+   "count": 5
   },
   {
    "code": "123330",
    "name": "제닉",
    "sector": "화장품",
-   "count": 3
+   "count": 5
   },
   {
-   "code": "377190",
-   "name": "디앤디플랫폼리츠",
+   "code": "090430",
+   "name": "아모레퍼시픽",
+   "sector": "화장품",
+   "count": 4
+  },
+  {
+   "code": "400760",
+   "name": "NH올원리츠",
    "sector": "부동산",
-   "count": 3
+   "count": 4
   },
   {
    "code": "014820",
    "name": "동원시스템즈",
    "sector": "2차전지",
-   "count": 3
+   "count": 4
   },
   {
    "code": "377450",
    "name": "리파인",
    "sector": "인터넷·IT서비스",
-   "count": 3
-  },
-  {
-   "code": "064850",
-   "name": "에프앤가이드",
-   "sector": "인터넷·IT서비스",
-   "count": 3
+   "count": 4
   },
   {
    "code": "005490",
    "name": "POSCO홀딩스",
    "sector": "2차전지",
-   "count": 2
+   "count": 3
   },
   {
    "code": "066970",
    "name": "엘앤에프",
    "sector": "2차전지",
-   "count": 2
+   "count": 3
   },
   {
    "code": "439090",
    "name": "마녀공장",
    "sector": "화장품",
+   "count": 3
+  },
+  {
+   "code": "105560",
+   "name": "KB금융",
+   "sector": "은행",
+   "count": 2
+  },
+  {
+   "code": "483650",
+   "name": "달바글로벌",
+   "sector": "화장품",
+   "count": 2
+  },
+  {
+   "code": "005070",
+   "name": "코스모신소재",
+   "sector": "2차전지",
+   "count": 2
+  },
+  {
+   "code": "377190",
+   "name": "디앤디플랫폼리츠",
+   "sector": "부동산",
    "count": 2
   },
   {
@@ -139,27 +145,39 @@
    "count": 2
   },
   {
+   "code": "126700",
+   "name": "하이비젼시스템",
+   "sector": "2차전지",
+   "count": 2
+  },
+  {
    "code": "317400",
    "name": "자이에스앤디",
    "sector": "부동산",
    "count": 2
   },
   {
-   "code": "002790",
-   "name": "아모레퍼시픽홀딩스",
+   "code": "404990",
+   "name": "신한서부티엔디리츠",
+   "sector": "부동산",
+   "count": 2
+  },
+  {
+   "code": "279570",
+   "name": "케이뱅크",
+   "sector": "은행",
+   "count": 2
+  },
+  {
+   "code": "051900",
+   "name": "LG생활건강",
    "sector": "화장품",
    "count": 2
   },
   {
-   "code": "039830",
-   "name": "오로라",
-   "sector": "전문서비스",
-   "count": 2
-  },
-  {
-   "code": "147830",
-   "name": "제룡산업",
-   "sector": "금속가공",
+   "code": "064850",
+   "name": "에프앤가이드",
+   "sector": "인터넷·IT서비스",
    "count": 2
   },
   {
@@ -169,27 +187,9 @@
    "count": 1
   },
   {
-   "code": "105560",
-   "name": "KB금융",
-   "sector": "은행",
-   "count": 1
-  },
-  {
    "code": "395400",
    "name": "SK리츠",
    "sector": "부동산",
-   "count": 1
-  },
-  {
-   "code": "483650",
-   "name": "달바글로벌",
-   "sector": "화장품",
-   "count": 1
-  },
-  {
-   "code": "005070",
-   "name": "코스모신소재",
-   "sector": "2차전지",
    "count": 1
   },
   {
