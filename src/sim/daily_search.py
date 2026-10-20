@@ -102,6 +102,7 @@ def build():
     fo = (fr.fillna(0) + og.fillna(0)).where(fr.notna() | og.notna())
     fo20 = fo.rolling(20, min_periods=15).sum(); fo60 = fo.rolling(60, min_periods=45).sum()
     X['fo60_cap'] = fo60 / cap; X['fo20_cap'] = fo20 / cap
+    X['fo20_amt'] = fo20 / 1e8; X['fo60_amt'] = fo60 / 1e8      # 외국인+기관 순매수 금액(억 원) — 대장주는 '얼마나 많이 샀나'
     X['fo_accel'] = (fo20 - (fo60 - fo20) / 2) / cap
     X['frgn60_cap'] = fr.rolling(60, min_periods=45).sum() / cap
     X['orgn20_cap'] = og.rolling(20, min_periods=15).sum() / cap
@@ -166,6 +167,7 @@ def build():
     nS = pd.DataFrame({s: uni[sec.index[sec == s]].sum(axis=1) for s in secs})
     S['sec_r1'] = L / L.shift(21) - 1; S['sec_r3'] = L / L.shift(63) - 1
     S['sec_persist20'] = persist(L, ma20)
+    S['sec_ret'] = L.pct_change(fill_method=None)
     S['rs_w1'] = (L / L.shift(5) - 1).sub(k / k.shift(5) - 1, axis=0)
     S['rs_m1'] = (L / L.shift(21) - 1).sub(k / k.shift(21) - 1, axis=0)
     S['rs_m3'] = (L / L.shift(63) - 1).sub(k / k.shift(63) - 1, axis=0)
@@ -275,13 +277,129 @@ def random_state():
             'val': sorted(rng.choice(VAL, size=int(rng.integers(3, 8)), replace=False).tolist())}
 
 
+SUPPLY = {  # 손으로 정리한 공급망·유사 테마 지도(가설)
+    '반도체 소자': ['반도체 장비', '반도체 소재', '반도체 부품', 'PCB·기판', '전자 수동부품', '디스플레이·전자부품'],
+    '반도체 장비': ['반도체 소재', '반도체 부품', 'PCB·기판', '반도체 소자'], '반도체 부품': ['반도체 장비', 'PCB·기판', '반도체 소재'],
+    '반도체 소재': ['반도체 장비', '반도체 부품', '화학'], 'PCB·기판': ['반도체 부품', '반도체 장비', '전자 수동부품'], '전자 수동부품': ['PCB·기판', '반도체 부품', '스마트폰 부품'],
+    '2차전지': ['비철금속', '화학', '전기장비', '금속가공', '철강·금속'], '조선': ['금속가공', '기계', '철강', '운송장비'], '방산·우주': ['기계', '금속가공', '항공·방산', '운송장비'],
+    '원자력': ['전력기기', '건설', '엔지니어링', '금속가공'], '전력기기': ['원자력', '전기장비', '비철금속', '건설'], '자동차': ['자동차부품', '자동차 전장·부품', '로봇'],
+    '로봇': ['기계', '자동차 전장·부품', '전기장비'], '바이오·헬스케어': ['제약·바이오', '바이오연구', '의료기기', '의료·정밀기기'], '제약·바이오': ['바이오·헬스케어', '바이오연구'],
+    '엔터·콘텐츠': ['미디어·콘텐츠', '게임', '레저'], '게임': ['엔터·콘텐츠', '소프트웨어·게임'], '화장품': ['음식료', '유통'], '증권': ['은행', '보험', '지주'], '은행': ['증권', '보험', '지주'],
+    '건설': ['건자재', '원자력', '엔지니어링'], '통신장비': ['통신·RF', '스마트폰 부품'], '디스플레이': ['디스플레이·전자부품', '반도체 장비']}
+LEADX = {'외기20일금액': 'fo20_amt', '외기60일금액': 'fo60_amt', '시총': 'logcap', '외기20일': 'fo20_cap', '외기60일': 'fo60_cap', '외기가속': 'fo_accel', '1개월섹터대비': 'r1rel', '3개월섹터대비': 'rs3', '거래대금순위': 'rep_val', '신고가근접': 'hi52', '20일선흐름': 'persist20'}
+
+
+def random_third():
+    m = random_state()
+    m.update({'mode': '3단계', 'lead_x': sorted(rng.choice(list(LEADX), size=int(rng.integers(1, 5)), replace=False).tolist()),
+              'nb': str(rng.choice(['상관', '순위상승', '공급망', '셋다'])), 'nb_n': int(rng.choice([1, 2, 3])),
+              'parts': str(rng.choice(['대장+차기가치', '대장만', '차기가치만'], p=[0.6, 0.2, 0.2]))})
+    return m
+
+
 def random_method():
     u = rng.random()
-    if u < 0.5:
+    if u < 0.4:
+        return random_third()
+    if u < 0.6:
         return random_state()
-    if u < 0.85:
+    if u < 0.9:
         return random_inter()
     return _random_score()
+
+
+_CORR = {}
+
+
+def sector_corr(S, meta, step=10, win=60):
+    """섹터 지수 일간 수익률의 최근 60일 상관(10일마다 계산, 사이는 직전 값)."""
+    if 'c' in _CORR:
+        return _CORR['c']
+    secs = meta['secs']; R = S['sec_ret'][secs].values
+    idx = meta['idx']; out = {}
+    for i in range(win, len(idx), step):
+        x = R[i - win:i]
+        ok = ~np.isnan(x).any(axis=0)
+        c = np.full((len(secs), len(secs)), np.nan)
+        if ok.sum() > 2:
+            c[np.ix_(ok, ok)] = np.corrcoef(x[:, ok].T)
+        out[i] = c
+    _CORR['c'] = out
+    return out
+
+
+def neighbors(m, okS, S, meta):
+    """주도 섹터의 차기·유사 섹터(주도 섹터 자신은 제외)."""
+    secs = meta['secs']; idx = meta['idx']
+    nb = np.zeros(okS.shape, bool); lead = okS.values
+    sidx = {s_: j for j, s_ in enumerate(secs)}
+    big = (meta['nS'][secs] >= 5).values
+    if m['nb'] in ('상관', '셋다'):
+        C = sector_corr(S, meta); keys = sorted(C)
+        cur = None; k = 0
+        for i in range(len(idx)):
+            while k < len(keys) and keys[k] <= i:
+                cur = C[keys[k]]; k += 1
+            if cur is None or not lead[i].any():
+                continue
+            for j in np.where(lead[i])[0]:
+                c = np.where(big[i] & ~lead[i], cur[j], np.nan)
+                if np.all(np.isnan(c)):
+                    continue
+                top = np.argsort(np.nan_to_num(c, nan=-9))[::-1][:m['nb_n']]
+                nb[i, top] = True
+    if m['nb'] in ('순위상승', '셋다'):
+        sc = sum(S[ST_AX[a]][secs].where(meta['nS'][secs] >= 5).rank(axis=1, pct=True) for a in m['axes']) / len(m['axes'])
+        up = (sc - sc.shift(20)).values
+        for i in range(len(idx)):
+            if not lead[i].any():
+                continue
+            u = np.where(~lead[i] & big[i], up[i], np.nan)
+            if np.all(np.isnan(u)):
+                continue
+            nb[i, np.argsort(np.nan_to_num(u, nan=-9))[::-1][:m['nb_n'] * max(1, lead[i].sum())]] = True
+    if m['nb'] in ('공급망', '셋다'):
+        for s_, adj in SUPPLY.items():
+            if s_ not in sidx:
+                continue
+            j = sidx[s_]; cols = [sidx[a] for a in adj if a in sidx]
+            if cols:
+                nb[np.ix_(lead[:, j], cols)] = True
+        nb &= ~lead & big
+    return pd.DataFrame(nb, index=okS.index, columns=secs)
+
+
+def evaluate_third(m, X, Y, S, meta):
+    uni, sec, idx = meta['uni'], meta['sec'], meta['idx']
+    okS = state_sectors(m, S, meta)
+    score = pd.DataFrame(np.nan, index=idx, columns=uni.columns, dtype='float32')
+    if m['parts'] in ('대장+차기가치', '대장만'):
+        # 대장주: 실적과 무관, 외기 매수·섹터 대비 강도·거래대금·신고가·20일선 흐름으로
+        base = sec_to_stock(okS, meta) & uni
+        ls = sum(X[LEADX[a]].where(base).rank(axis=1, pct=True).fillna(0) for a in m['lead_x']).where(base)
+        for s_ in meta['secs']:
+            if not okS[s_].any():
+                continue
+            cols = sec.index[sec == s_]
+            r = ls[cols].rank(axis=1, ascending=False, method='first')
+            score[cols] = np.where(r.values == 1, 2.0, score[cols].values)
+    if m['parts'] in ('대장+차기가치', '차기가치만'):
+        nbS = neighbors(m, okS, S, meta)
+        okn = sec_to_stock(nbS, meta) & uni
+        if m['profit']:
+            okn &= (X['op_g'] > 0) | (X['opm_chg'] > 0)
+        vs = sum(X[k].where(okn).rank(axis=1, pct=True).fillna(0) for k in m['val'])
+        if m['lag']:
+            vs = vs.where(X['rs3'] < 0)
+        vs = vs.where(okn)
+        for s_ in meta['secs']:
+            if not nbS[s_].any():
+                continue
+            cols = sec.index[sec == s_]
+            r = vs[cols].rank(axis=1, ascending=False, method='first')
+            sel = (r.values <= m['m']) & np.isnan(score[cols].values)
+            score[cols] = np.where(sel, 1.0 + 0.5 * vs[cols].values / len(m['val']), score[cols].values)
+    return finish(dict(m, cap=99, N=m['K'] + 6), score, Y, meta)   # 대장주(점수 2) 먼저, 차기 가치주는 합쳐 6개까지
 
 
 def state_sectors(m, S, meta):
@@ -348,6 +466,8 @@ def evaluate_state(m, X, Y, S, meta):
 
 
 def evaluate(m, X, Y, S, meta, signs):
+    if m.get('mode') == '3단계':
+        return evaluate_third(m, X, Y, S, meta)
     if m.get('mode') == '2단계':
         return evaluate_state(m, X, Y, S, meta)
     if m.get('mode') == '교집합':
@@ -364,6 +484,10 @@ def _random_score():
 
 
 def mname(m):
+    if m.get('mode') == '3단계':
+        return (f"3단계|섹:{'+'.join(m['axes'])}|K{m['K']}~{m['Kout']}|{'꺾임교체' if m['brk'] else '-'}|{'과열감점' if m['rsi_cap'] else '-'}"
+                f"|대장:{'+'.join(m['lead_x'])}|차기:{m['nb']}{m['nb_n']}|가치{m['m']}:{','.join(m['val'])}{'(덜오름)' if m['lag'] else ''}|{'이익' if m['profit'] else '-'}"
+                f"|{'혼합섹터제외' if m.get('mix_ex') else '-'}|{m['parts']}")
     if m.get('mode') == '2단계':
         return (f"2단계|섹:{'+'.join(m['axes'])}|K{m['K']}~{m['Kout']}|{'꺾임교체' if m['brk'] else '-'}|{'과열감점' if m['rsi_cap'] else '-'}"
                 f"|대장:{m['rep']}{'(관문없음)' if m.get('lead_free') else ''}|꽉참:{m['crowd']}|가치{m['m']}:{','.join(m['val'])}{'(덜오름)' if m['lag'] else ''}|{'이익' if m['profit'] else '-'}|{'혼합섹터제외' if m.get('mix_ex') else '-'}")
@@ -586,6 +710,23 @@ def state_marg(T):
     return pd.DataFrame(rows).sort_values('63일 차이', ascending=False)
 
 
+def third_marg(T):
+    x = T[T.index.str.startswith('3단계')]
+    if x.empty:
+        return pd.DataFrame()
+    base = x['63일 16~23'].mean(); parts = x.index.str.split('|'); rows = []
+    tests = [(f'구성:{p}', parts.str[-1] == p) for p in ('대장+차기가치', '대장만', '차기가치만')]
+    tests += [(f'차기:{n}', parts.str[6].str.startswith(f'차기:{n}')) for n in ('상관', '순위상승', '공급망', '셋다')]
+    tests += [(f'대장재료:{a}', parts.str[5].str.contains(a, regex=False)) for a in LEADX]
+    tests += [(f'섹터재료:{a}', parts.str[1].str.contains(a, regex=False)) for a in ST_AX]
+    for lab, mk in tests:
+        y = x[np.asarray(mk, dtype=bool)]
+        if len(y):
+            rows.append({'항목': lab, '방법 수': len(y), '63일 차이': y['63일 16~23'].mean() - base, '플러스 해': y['플러스 해'].mean(),
+                         '섹터대비 63': y['섹터대비 63'].mean(), '수급유입 63': y['수급유입 63'].mean(), '24~': y['24~ 63일'].mean()})
+    return pd.DataFrame(rows).sort_values('63일 차이', ascending=False)
+
+
 def inter_marg(T):
     x = T[T.index.str.startswith('교집합')]
     if x.empty:
@@ -638,8 +779,9 @@ def write(store, picks_now, meta, IC, signs, wf, wfp, elapsed):
          '운인지 실력인지: 걷기식으로 고른 방법들이 그해 전체 방법 중 몇 % 위치였나(50% = 운과 같음). 꾸준히 60% 이상이면 실력 쪽.', '',
          f"2017~2023 상위20 평균 백분위 {pre['상위20 그해 백분위'].mean():.0f}%, 1등 평균 백분위 {pre['1등 그해 백분위'].mean():.0f}%, 상위20이 50% 넘은 해 {(pre['상위20 그해 백분위'] > 50).sum()}/{len(pre)}", '',
          wf.round(2).to_markdown(), '', '## 교집합 조건별 효과(그 조건이 들어간 방법 평균 - 전체 평균, 63일 16~23 %p)', '', inter_marg(T).round(2).to_markdown(index=False), '',
+         '## 3단계(주도 섹터 대장주 + 차기·유사 섹터 가치주) 항목별 효과(63일 16~23 %p, 3단계 평균 대비)', '', third_marg(T).round(2).to_markdown(index=False), '',
          '## 2단계 상태형 로직 항목별 효과(63일 16~23 %p, 2단계 로직 평균 대비)', '', state_marg(T).round(2).to_markdown(index=False), '',
-         '## 로직 계열별 평균', '', T.assign(계열=T.index.str.split('|').str[0].where(T.index.str.split('|').str[0].isin(['2단계', '교집합']), '점수형')).groupby('계열')[['63일 16~23', '플러스 해', '24~ 63일', '안정성']].mean().round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
+         '## 로직 계열별 평균', '', T.assign(계열=T.index.str.split('|').str[0].where(T.index.str.split('|').str[0].isin(['2단계', '3단계', '교집합']), '점수형')).groupby('계열')[['63일 16~23', '플러스 해', '24~ 63일', '안정성']].mean().round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
          '## 상위 30(사후 순위, 참고용)', '', T.head(30).round(2).to_markdown(), '',
          '## 요소 부호(올해 기준, 걷기식)', '', ', '.join(f"{k}{'+' if v > 0 else '-'}" for k, v in signs.get(meta['idx'].max().year, {}).items() if v), '']
     if picks_now:
