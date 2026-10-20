@@ -233,7 +233,7 @@ def write(d, keys, W, series, M, picks):
     best = FIXED
     scope, gate, cp = best.split('|')
     ICs = monthly_ic(scope_df(d, scope), keys)
-    w = choose_weights(ICs, Y + 1)    # 지금까지 자료 전부
+    w = choose_weights(ICs, Y)    # 올해 가중치는 작년까지 자료로 정해 1년 고정(매일 바뀌지 않게)
     cur = {'asof': str(pd.Timestamp.today().date()), 'variant': best, 'scope': scope, 'gate': gate, 'cap_per_sector': 2 if cp == '섹터당2' else None,
            'weights': w, 'desc': {k: F[k][1] for k in w}}
     json.dump(cur, open(os.path.join(ROOT, 'docs', 'sim', 'engine_current.json'), 'w'), ensure_ascii=False, indent=1)

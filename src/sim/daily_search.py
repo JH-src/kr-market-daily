@@ -25,6 +25,13 @@ def f32(x):
     return x.astype('float32')
 
 
+def persist(L, ma20):
+    """20일선 위 흐름이 이어진 날 수. 하루이틀 이탈은 봐주고, 4거래일 연속 20일선 아래면 흐름이 끊긴 것으로 봄(기간을 3·6개월로 미리 정하지 않음)."""
+    below = (L < ma20).astype(int).where(ma20.notna(), 1)
+    brk = (below.rolling(4, min_periods=4).sum() >= 4).astype(int)
+    return brk.apply(lambda c: (c == 0).astype(int).groupby(c.cumsum()).cumsum()).astype('float32')
+
+
 def build():
     t0 = time.time()
     C = E.Ctx('theme')
@@ -49,6 +56,7 @@ def build():
     dP = P.diff(); up = dP.clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean(); dn = (-dP.clip(upper=0)).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
     X['rsi'] = 100 - 100 / (1 + up / dn)
     X['logcap'] = np.log(cap)
+    X['persist20'] = persist(P, ma20)
     X['val_surge'] = val20 / val.rolling(120, min_periods=60).mean()
     # 섹터 지수(시총 가중)와 섹터 기준 상대 수익
     SI = C.secidx.loc[dates]
@@ -157,6 +165,9 @@ def build():
     S['sb_nearhi'] = pd.DataFrame({s: (X['hi52'][sec.index[sec == s]].where(uni[sec.index[sec == s]]) > -0.1).mean(axis=1) for s in secs})
     nS = pd.DataFrame({s: uni[sec.index[sec == s]].sum(axis=1) for s in secs})
     S['sec_r1'] = L / L.shift(21) - 1; S['sec_r3'] = L / L.shift(63) - 1
+    S['sec_persist20'] = persist(L, ma20)
+    # 섹터 대장(시총 상위 3) 종목들의 20일선 위 흐름 평균
+    S['lead_persist20'] = pd.DataFrame({s: X['persist20'][sec.index[sec == s]].where(rc[sec.index[sec == s]] <= 3).mean(axis=1) for s in secs})
     S['sec_above60_share'] = pd.DataFrame({s: (X['g60'][sec.index[sec == s]].where(uni[sec.index[sec == s]]) > 0).mean(axis=1) for s in secs})
     # 판단일: D0 이후, 63일 뒤 결과가 있는 날까지(결과 없는 최근일은 현재 판정에만)
     idx = dates[dates >= D0]
@@ -208,12 +219,14 @@ POOL = ['low_vol', 'hi52', 'mom12_1', 'val_surge', 'r1rel', 'rs3', 'r1', 'rep_ca
 
 
 SEC_CONDS = ['섹:3개월추세', '섹:그날강함', '섹:꺾임아님', '섹:초입', '섹:가격상위5', '섹:수급가속', '섹:수급유입60', '섹:이익확산',
-             '섹:1개월상위10', '섹:3개월상위10', '섹:60일선위종목60%+', '섹:신고가비율상위10', '섹:3개월하위아님']
+             '섹:1개월상위10', '섹:3개월상위10', '섹:60일선위종목60%+', '섹:신고가비율상위10', '섹:3개월하위아님',
+             '섹:20일선위흐름20일+', '섹:20일선위흐름40일+', '섹:20일선위흐름60일+', '섹:대장주20일선위흐름20일+', '섹:대장주20일선위흐름40일+']
 STK_CONDS = ['영업이익증가', '이익률개선', '신고가-10%내', '신고가-25%내', '저변동상위50%', '외기20일매수', '외기60일매수', '외기가속', '연기금60일매수',
              '외국인60일매수', '섹터시총3위내', '섹터거래대금3위내', '안달림', '섹터대비1개월덜오름', 'PBR낮은50%', 'ROE상위50%', '자사주90일', '외국계5%90일', '이익수익률상위50%',
              '20일선위', '60일선위', '120일선위', '정배열', '20일신고가', '60일선0~10%위', 'RSI50~65', 'RSI70미만', '1개월-10~+10%', '3개월상위30%', '저변동하위30%아님',
              '외국인연속5일', '기관60일매수', '외기매수개인매도', '매출증가', '매출가속', 'PER하위30%', 'PSR하위30%', '부채비율100%미만', '공급계약90일',
-             '대형(시총200위내)', '중형(200~700위)', '거래대금증가1.2~2배', '섹터대비3개월덜오름', '12개월모멘텀상위30%']
+             '대형(시총200위내)', '중형(200~700위)', '거래대금증가1.2~2배', '섹터대비3개월덜오름', '12개월모멘텀상위30%',
+             '20일선위흐름20일+', '20일선위흐름40일+', '20일선위흐름10일이하(초입)']
 TIEB = ['low_vol', 'hi52', 'fo_accel', 'cap']
 
 
@@ -308,6 +321,10 @@ def cond(c, X, S, meta):
          '섹:3개월상위10': lambda: sec_to_stock(S['sec_r3'][secs].where(meta['nS'][secs] >= 5).rank(axis=1, ascending=False) <= 10, meta),
          '섹:60일선위종목60%+': lambda: sec_to_stock(S['sec_above60_share'][secs] >= 0.6, meta),
          '섹:신고가비율상위10': lambda: sec_to_stock(S['sb_nearhi'][secs].where(meta['nS'][secs] >= 5).rank(axis=1, ascending=False) <= 10, meta),
+         '섹:20일선위흐름20일+': lambda: sec_to_stock(S['sec_persist20'][secs] >= 20, meta), '섹:20일선위흐름40일+': lambda: sec_to_stock(S['sec_persist20'][secs] >= 40, meta),
+         '섹:20일선위흐름60일+': lambda: sec_to_stock(S['sec_persist20'][secs] >= 60, meta),
+         '섹:대장주20일선위흐름20일+': lambda: sec_to_stock(S['lead_persist20'][secs] >= 20, meta), '섹:대장주20일선위흐름40일+': lambda: sec_to_stock(S['lead_persist20'][secs] >= 40, meta),
+         '20일선위흐름20일+': lambda: X['persist20'] >= 20, '20일선위흐름40일+': lambda: X['persist20'] >= 40, '20일선위흐름10일이하(초입)': lambda: (X['persist20'] >= 3) & (X['persist20'] <= 10),
          '섹:3개월하위아님': lambda: sec_to_stock(S['sec_r3'][secs].rank(axis=1, pct=True) > 0.3, meta),
          '20일선위': lambda: X['g20'] > 0, '60일선위': lambda: X['g60'] > 0, '120일선위': lambda: X['g120'] > 0, '정배열': lambda: X['align'] > 0,
          '20일신고가': lambda: X['brk20'] > 0, '60일선0~10%위': lambda: (X['g60'] > 0) & (X['g60'] < 0.1), 'RSI50~65': lambda: (X['rsi'] >= 50) & (X['rsi'] <= 65),

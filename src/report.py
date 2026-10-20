@@ -1062,12 +1062,30 @@ def sim_picks_v2(asof):
     d = d.sort_values('score', ascending=False)
     capn = cfg.get('cap_per_sector')
     keep, cnt = [], {}
+    # 유지 규칙: 정식 교체는 매월 첫 판단일만. 그 사이에는 기존 종목이 자격(섹터 흐름·실적 관문)을 잃었을 때만 그 자리만 교체.
+    hp = os.path.join(DATA, 'picks', 'v2_hold.json')
+    try:
+        hold = json.load(open(hp))
+    except Exception:
+        hold = {}
+    same_month = hold.get('month') == t.strftime('%Y%m') and hold.get('variant') == cfg.get('variant')
+    if same_month:
+        for c in hold.get('codes', []):
+            if c in d.index and len(keep) < n and not (capn and cnt.get(d.at[c, 'sector'], 0) >= capn):
+                keep.append(c); cnt[d.at[c, 'sector']] = cnt.get(d.at[c, 'sector'], 0) + 1
     for c, x in d.iterrows():
+        if c in keep:
+            continue
         if capn and cnt.get(x['sector'], 0) >= capn:
             continue
         keep.append(c); cnt[x['sector']] = cnt.get(x['sector'], 0) + 1
         if len(keep) >= n:
             break
+    try:
+        json.dump({'month': t.strftime('%Y%m'), 'asof': t.strftime('%Y%m%d'), 'variant': cfg.get('variant'), 'codes': keep,
+                   'dropped': [c for c in hold.get('codes', []) if c not in keep] if same_month else []}, open(hp, 'w'), ensure_ascii=False)
+    except Exception:
+        pass
     rows = []
     for c in keep:
         x = d.loc[c]
