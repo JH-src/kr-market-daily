@@ -63,6 +63,6 @@ jobs:
       - name: 결과 저장
         run: |
           git config user.name "sim-bot"; git config user.email "sim-bot@users.noreply.github.com"
-          git add docs/sim/daily_search.md docs/sim/daily_methods.csv docs/sim/daily_current.json
+          git add docs/sim/daily_search.md docs/sim/daily_methods.csv docs/sim/daily_current.json docs/sim/cond_weights.json
           git commit -q -m "매 영업일 경쟁 탐색 결과" || exit 0
           for i in 1 2 3; do git pull --rebase -X theirs -q && git push && break; sleep 5; done

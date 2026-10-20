@@ -41,6 +41,14 @@ def build():
     X['hi52'] = P / P.rolling(250, min_periods=120).max() - 1
     r1 = P / P.shift(21) - 1; r3 = P / P.shift(63) - 1
     X['mom12_1'] = P.shift(21) / P.shift(250) - 1
+    ma20, ma60, ma120 = P.rolling(20, min_periods=20).mean(), P.rolling(60, min_periods=60).mean(), P.rolling(120, min_periods=120).mean()
+    X['g20'] = P / ma20 - 1; X['g60'] = P / ma60 - 1; X['g120'] = P / ma120 - 1
+    X['align'] = ((ma20 > ma60) & (ma60 > ma120)).astype('float32').where(ma120.notna())
+    X['brk20'] = (P >= P.rolling(20, min_periods=20).max() * 0.999).astype('float32').where(ma20.notna())
+    X['r3'] = r3
+    dP = P.diff(); up = dP.clip(lower=0).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean(); dn = (-dP.clip(upper=0)).ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+    X['rsi'] = 100 - 100 / (1 + up / dn)
+    X['logcap'] = np.log(cap)
     X['val_surge'] = val20 / val.rolling(120, min_periods=60).mean()
     # 섹터 지수(시총 가중)와 섹터 기준 상대 수익
     SI = C.secidx.loc[dates]
@@ -90,6 +98,10 @@ def build():
     X['frgn60_cap'] = fr.rolling(60, min_periods=45).sum() / cap
     X['orgn20_cap'] = og.rolling(20, min_periods=15).sum() / cap
     X['pension60_cap'] = pn.rolling(60, min_periods=45).sum() / cap
+    pos = (fr > 0).astype(int)
+    X['frgn_streak'] = pos.apply(lambda c: c.groupby((c == 0).cumsum()).cumsum()).astype('float32').where(fr.notna())
+    X['orgn60_cap'] = og.rolling(60, min_periods=45).sum() / cap
+    X['fo_vs_prsn'] = ((fo20 > 0) & (X['orgn20_cap'].notna())).astype('float32').where(fo20.notna())
     # 실현 결과: 뽑은 뒤 수급 유입(t+1~t+h 외국인+기관 순매수/시총)
     Y = {}
     for h in H:
@@ -101,6 +113,9 @@ def build():
     # 실적·공시(월말 패널 값을 다음 월말까지 사용)
     pan = pickle.load(open(os.path.join(WORK, 'panel_theme_x.pkl'), 'rb'))
     pan = E3.factorize(pan, [k for k in FUND if k in E3.F])
+    for k, col in (('per', 'per'), ('psr', 'psr'), ('debt_ratio', 'debt_ratio')):
+        if col in pan:
+            X[k] = pan.pivot_table(index='date', columns='code', values=col).reindex(columns=keep).reindex(dates, method='ffill')
     for k in FUND:
         if '_' + k in pan:
             m = pan.pivot_table(index='date', columns='code', values='_' + k).reindex(columns=keep)
@@ -141,6 +156,8 @@ def build():
         S['se_opg'] = pd.DataFrame({s: (X['op_g'][sec.index[sec == s]].where(uni[sec.index[sec == s]]) > 0).mean(axis=1) for s in secs})
     S['sb_nearhi'] = pd.DataFrame({s: (X['hi52'][sec.index[sec == s]].where(uni[sec.index[sec == s]]) > -0.1).mean(axis=1) for s in secs})
     nS = pd.DataFrame({s: uni[sec.index[sec == s]].sum(axis=1) for s in secs})
+    S['sec_r1'] = L / L.shift(21) - 1; S['sec_r3'] = L / L.shift(63) - 1
+    S['sec_above60_share'] = pd.DataFrame({s: (X['g60'][sec.index[sec == s]].where(uni[sec.index[sec == s]]) > 0).mean(axis=1) for s in secs})
     # 판단일: D0 이후, 63일 뒤 결과가 있는 날까지(결과 없는 최근일은 현재 판정에만)
     idx = dates[dates >= D0]
     X = {kk: f32(v.loc[idx]) for kk, v in X.items()}
@@ -190,15 +207,31 @@ POOL = ['low_vol', 'hi52', 'mom12_1', 'val_surge', 'r1rel', 'rs3', 'r1', 'rep_ca
         'orgn20_cap', 'pension60_cap'] + FUND
 
 
-SEC_CONDS = ['섹:3개월추세', '섹:그날강함', '섹:꺾임아님', '섹:초입', '섹:가격상위5', '섹:수급가속', '섹:수급유입60', '섹:이익확산']
+SEC_CONDS = ['섹:3개월추세', '섹:그날강함', '섹:꺾임아님', '섹:초입', '섹:가격상위5', '섹:수급가속', '섹:수급유입60', '섹:이익확산',
+             '섹:1개월상위10', '섹:3개월상위10', '섹:60일선위종목60%+', '섹:신고가비율상위10', '섹:3개월하위아님']
 STK_CONDS = ['영업이익증가', '이익률개선', '신고가-10%내', '신고가-25%내', '저변동상위50%', '외기20일매수', '외기60일매수', '외기가속', '연기금60일매수',
-             '외국인60일매수', '섹터시총3위내', '섹터거래대금3위내', '안달림', '섹터대비1개월덜오름', 'PBR낮은50%', 'ROE상위50%', '자사주90일', '외국계5%90일', '이익수익률상위50%']
+             '외국인60일매수', '섹터시총3위내', '섹터거래대금3위내', '안달림', '섹터대비1개월덜오름', 'PBR낮은50%', 'ROE상위50%', '자사주90일', '외국계5%90일', '이익수익률상위50%',
+             '20일선위', '60일선위', '120일선위', '정배열', '20일신고가', '60일선0~10%위', 'RSI50~65', 'RSI70미만', '1개월-10~+10%', '3개월상위30%', '저변동하위30%아님',
+             '외국인연속5일', '기관60일매수', '외기매수개인매도', '매출증가', '매출가속', 'PER하위30%', 'PSR하위30%', '부채비율100%미만', '공급계약90일',
+             '대형(시총200위내)', '중형(200~700위)', '거래대금증가1.2~2배', '섹터대비3개월덜오름', '12개월모멘텀상위30%']
 TIEB = ['low_vol', 'hi52', 'fo_accel', 'cap']
 
 
+CW = {}
+try:
+    CW = json.load(open(os.path.join(ROOT, 'docs', 'sim', 'cond_weights.json')))['weights']
+except Exception:
+    pass
+
+
+def _p(lst):
+    w = np.array([CW.get(c, 1.0) for c in lst], dtype=float)
+    w = np.clip(w, 0.2, 5); return w / w.sum()
+
+
 def random_inter():
-    k_s = int(rng.integers(0, 3)); k_t = int(rng.integers(1, 5))
-    return {'mode': '교집합', 'conds': sorted(rng.choice(SEC_CONDS, size=k_s, replace=False).tolist() + rng.choice(STK_CONDS, size=k_t, replace=False).tolist()),
+    k_s = int(rng.integers(0, 3)); k_t = int(rng.integers(1, 6))
+    return {'mode': '교집합', 'conds': sorted(rng.choice(SEC_CONDS, size=k_s, replace=False, p=_p(SEC_CONDS)).tolist() + rng.choice(STK_CONDS, size=k_t, replace=False, p=_p(STK_CONDS)).tolist()),
             'tie': str(rng.choice(TIEB)), 'N': int(rng.choice([5, 10])), 'cap': int(rng.choice([2, 3]))}
 
 
@@ -270,9 +303,26 @@ def cond(c, X, S, meta):
          '연기금60일매수': lambda: X['pension60_cap'] > 0, '외국인60일매수': lambda: X['frgn60_cap'] > 0, '섹터시총3위내': lambda: X['rep_cap'] >= -3,
          '섹터거래대금3위내': lambda: X['rep_val'] >= -3, '안달림': lambda: ~((pct('r1rel') > 0.8) | (pct('val_surge') > 0.8)), '섹터대비1개월덜오름': lambda: X['r1rel'] < 0,
          'PBR낮은50%': lambda: pct('bp') > 0.5, 'ROE상위50%': lambda: pct('roe') > 0.5, '자사주90일': lambda: X['buyback90'] > 0, '외국계5%90일': lambda: X['major_foreign90'] > 0,
-         '이익수익률상위50%': lambda: pct('ep') > 0.5}
-    v = m[c]()
-    _CC[c] = v.astype(bool) if v is not None else None
+         '이익수익률상위50%': lambda: pct('ep') > 0.5,
+         '섹:1개월상위10': lambda: sec_to_stock(S['sec_r1'][secs].where(meta['nS'][secs] >= 5).rank(axis=1, ascending=False) <= 10, meta),
+         '섹:3개월상위10': lambda: sec_to_stock(S['sec_r3'][secs].where(meta['nS'][secs] >= 5).rank(axis=1, ascending=False) <= 10, meta),
+         '섹:60일선위종목60%+': lambda: sec_to_stock(S['sec_above60_share'][secs] >= 0.6, meta),
+         '섹:신고가비율상위10': lambda: sec_to_stock(S['sb_nearhi'][secs].where(meta['nS'][secs] >= 5).rank(axis=1, ascending=False) <= 10, meta),
+         '섹:3개월하위아님': lambda: sec_to_stock(S['sec_r3'][secs].rank(axis=1, pct=True) > 0.3, meta),
+         '20일선위': lambda: X['g20'] > 0, '60일선위': lambda: X['g60'] > 0, '120일선위': lambda: X['g120'] > 0, '정배열': lambda: X['align'] > 0,
+         '20일신고가': lambda: X['brk20'] > 0, '60일선0~10%위': lambda: (X['g60'] > 0) & (X['g60'] < 0.1), 'RSI50~65': lambda: (X['rsi'] >= 50) & (X['rsi'] <= 65),
+         'RSI70미만': lambda: X['rsi'] < 70, '1개월-10~+10%': lambda: (X['r1'] > -0.1) & (X['r1'] < 0.1), '3개월상위30%': lambda: pct('r3') > 0.7,
+         '저변동하위30%아님': lambda: pct('low_vol') > 0.3, '외국인연속5일': lambda: X['frgn_streak'] >= 5, '기관60일매수': lambda: X['orgn60_cap'] > 0,
+         '외기매수개인매도': lambda: X['fo_vs_prsn'] > 0, '매출증가': lambda: X['ry'] > 0, '매출가속': lambda: X['accel_d'] > 0,
+         'PER하위30%': lambda: X['per'].where(X['per'] > 0).rank(axis=1, pct=True) < 0.3, 'PSR하위30%': lambda: X['psr'].where(X['psr'] > 0).rank(axis=1, pct=True) < 0.3,
+         '부채비율100%미만': lambda: X['debt_ratio'] < 100, '공급계약90일': lambda: X['supply90'] > 0,
+         '대형(시총200위내)': lambda: meta['cap'].rank(axis=1, ascending=False) <= 200, '중형(200~700위)': lambda: meta['cap'].rank(axis=1, ascending=False).between(201, 700) if False else ((meta['cap'].rank(axis=1, ascending=False) > 200) & (meta['cap'].rank(axis=1, ascending=False) <= 700)),
+         '거래대금증가1.2~2배': lambda: (X['val_surge'] >= 1.2) & (X['val_surge'] <= 2), '섹터대비3개월덜오름': lambda: X['rs3'] < 0, '12개월모멘텀상위30%': lambda: pct('mom12_1') > 0.7}
+    try:
+        v = m[c]()
+    except KeyError:
+        v = None
+    _CC[c] = v.fillna(False).astype(bool) if v is not None else None
     return _CC[c]
 
 
@@ -443,6 +493,7 @@ def write(store, picks_now, meta, IC, signs, wf, wfp, elapsed):
          '## 완전 걷기식 결과(해마다 이전 성과로 방법 고르기)', '',
          f"2017~2023: 1등 {pre['1등'].mean():+.2f}%p({(pre['1등'] > 0).sum()}/{len(pre)}) · 상위5 {pre['상위5'].mean():+.2f}%p({(pre['상위5'] > 0).sum()}/{len(pre)}) · 상위20 {pre['상위20'].mean():+.2f}%p({(pre['상위20'] > 0).sum()}/{len(pre)}) · 전체 평균 {pre['전체 평균'].mean():+.2f}%p",
          f"2024~: 1등 {wf.loc[2024:, '1등'].mean():+.2f}%p · 상위5 {wf.loc[2024:, '상위5'].mean():+.2f}%p · 상위20 {wf.loc[2024:, '상위20'].mean():+.2f}%p", '',
+         f"판정 구간(2020~2023, 조건 샘플링 학습에 안 쓴 해): 1등 {wf.loc[2020:2023, '1등'].mean():+.2f}%p · 상위20 {wf.loc[2020:2023, '상위20'].mean():+.2f}%p, 상위20 백분위 {wf.loc[2020:2023, '상위20 그해 백분위'].mean():.0f}%", '',
          '운인지 실력인지: 걷기식으로 고른 방법들이 그해 전체 방법 중 몇 % 위치였나(50% = 운과 같음). 꾸준히 60% 이상이면 실력 쪽.', '',
          f"2017~2023 상위20 평균 백분위 {pre['상위20 그해 백분위'].mean():.0f}%, 1등 평균 백분위 {pre['1등 그해 백분위'].mean():.0f}%, 상위20이 50% 넘은 해 {(pre['상위20 그해 백분위'] > 50).sum()}/{len(pre)}", '',
          wf.round(2).to_markdown(), '', '## 교집합 조건별 효과(그 조건이 들어간 방법 평균 - 전체 평균, 63일 16~23 %p)', '', inter_marg(T).round(2).to_markdown(index=False), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
@@ -506,6 +557,30 @@ def dump(store, pk, meta, IC, signs, shard, t0):
     print('저장', shard, len(store), flush=True)
 
 
+TRAIN_END = 2019
+
+
+def update_weights(store):
+    """조건별 효과를 학습 구간(2016~2019, 63일 결과)만으로 계산해 다음 회차 샘플링 확률에 반영(판정 구간 2020~에는 손대지 않음)."""
+    rows = {}
+    for k, v in store.items():
+        if not k.startswith('교집합') or v['n'].mean() < 2:
+            continue
+        y = v.loc['2016':f'{TRAIN_END}-09-30', 'ex63']
+        if y.count() >= 24:
+            rows[k] = y.mean()
+    if len(rows) < 200:
+        return
+    sr = pd.Series(rows); base = sr.mean(); sd = sr.std()
+    w, eff = {}, {}
+    for c in SEC_CONDS + STK_CONDS:
+        x = sr[sr.index.str.contains(c, regex=False)]
+        if len(x) >= 20:
+            eff[c] = float((x.mean() - base) / (sd + 1e-9)); w[c] = float(np.exp(2 * eff[c]))
+    json.dump({'train_end': TRAIN_END, 'n_methods': len(sr), 'weights': w, 'effect_sd': eff},
+              open(os.path.join(ROOT, 'docs', 'sim', 'cond_weights.json'), 'w'), ensure_ascii=False, indent=1)
+
+
 def merge(paths):
     store, pk, meta, signs, el = {}, {}, None, None, 0
     for p in sorted(paths, key=os.path.getmtime):
@@ -516,6 +591,7 @@ def merge(paths):
         store.update(d['store']); meta = d['meta']; signs = d['signs']; el = max(el, d['sec'])
         for k, v in d['pk'].items():
             pk[k] = pd.Series(True, index=v)
+    update_weights(store)
     wf, wfp = walkforward(store)
     write(store, current(pk, wfp), meta, None, signs, wf, wfp, el)
 
