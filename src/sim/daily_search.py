@@ -259,17 +259,19 @@ def random_inter():
 
 ST_AX = {'1주강도': 'rs_w1', '1개월강도': 'rs_m1', '3개월강도': 'rs_m3', '20일선흐름': 'sec_persist20', '거래대금증가': 'sec_val_chg',
          '거래대금비중증가': 'sec_val_share_chg', '외기60일': 'sf_fo60', '외기20일': 'sf_fo20', '외기가속': 'sf_accel', 'RSI': 'sec_rsi', '60일선위비율': 'tp_above60'}
+MIXED = ['기타', '전문서비스', '사업지원', '금융', '지주', '기타제조', '인쇄']
 REP = {'시총1위': 'rep_cap', '거래대금1위': 'rep_val', '외기60일1위': 'fo60_cap'}
 CROWD = ['없음', '외기60일상위20%', 'RSI70+', '1개월급등상위20%', '셋중하나']
 VAL = ['bp', 'ep', 'op_yield', 'roe', 'op_g', 'opm_chg', 'low_vol']
 
 
 def random_state():
-    ax = sorted(rng.choice(list(ST_AX), size=int(rng.integers(2, 6)), replace=False).tolist())
+    ax = sorted(rng.choice(list(ST_AX), size=int(rng.integers(2, 6)), replace=False, p=_p(list(ST_AX))).tolist())
     K = int(rng.choice([2, 3, 5]))
     return {'mode': '2단계', 'axes': ax, 'K': K, 'Kout': int(K * rng.choice([1.5, 2, 3])), 'brk': bool(rng.random() < 0.6),
             'rsi_cap': bool(rng.random() < 0.5), 'rep': str(rng.choice(list(REP))), 'crowd': str(rng.choice(CROWD)),
             'm': int(rng.choice([1, 2])), 'lag': bool(rng.random() < 0.5), 'profit': bool(rng.random() < 0.6),
+            'lead_free': bool(rng.random() < 0.5), 'mix_ex': bool(rng.random() < 0.5),
             'val': sorted(rng.choice(VAL, size=int(rng.integers(3, 8)), replace=False).tolist())}
 
 
@@ -286,6 +288,8 @@ def state_sectors(m, S, meta):
     """주도 섹터를 상태로 관리: 여러 기간·거래대금·RSI·외기 수급 순위로 들어오고(K 안), 순위가 Kout 밖으로 밀리거나 꺾이면(4일 연속 20일선 이탈) 나감."""
     secs = meta['secs']
     ok = (meta['nS'][secs] >= 5)
+    if m.get('mix_ex'):
+        ok = ok & ~ok.columns.isin(MIXED)            # 업종이 섞인 묶음(전문서비스·사업지원 등) 제외
     sc = sum(S[ST_AX[a]][secs].where(ok).rank(axis=1, pct=True) for a in m['axes']) / len(m['axes'])
     if m['rsi_cap']:
         sc = sc.where(~(S['sec_rsi'][secs] > 80), sc - 0.3)      # 과열(RSI 80 넘음)은 점수 깎음
@@ -308,10 +312,11 @@ def state_sectors(m, S, meta):
 def evaluate_state(m, X, Y, S, meta):
     uni, sec, idx = meta['uni'], meta['sec'], meta['idx']
     okS = state_sectors(m, S, meta)
-    ok = sec_to_stock(okS, meta) & uni
+    base = sec_to_stock(okS, meta) & uni
+    ok = base.copy()
     if m['profit']:
         ok &= (X['op_g'] > 0) | (X['opm_chg'] > 0)
-    rep = X[REP[m['rep']]].where(ok)
+    rep = X[REP[m['rep']]].where(base if m.get('lead_free') else ok)   # 대장주는 실적 관문 없이 고를 수 있게(실적 회복 초입 대장주)
     pr = lambda k: X[k].rank(axis=1, pct=True)
     crowd = pd.DataFrame(False, index=idx, columns=uni.columns)
     if m['crowd'] in ('외기60일상위20%', '셋중하나'):
@@ -361,7 +366,7 @@ def _random_score():
 def mname(m):
     if m.get('mode') == '2단계':
         return (f"2단계|섹:{'+'.join(m['axes'])}|K{m['K']}~{m['Kout']}|{'꺾임교체' if m['brk'] else '-'}|{'과열감점' if m['rsi_cap'] else '-'}"
-                f"|대장:{m['rep']}|꽉참:{m['crowd']}|가치{m['m']}:{','.join(m['val'])}{'(덜오름)' if m['lag'] else ''}|{'이익' if m['profit'] else '-'}")
+                f"|대장:{m['rep']}{'(관문없음)' if m.get('lead_free') else ''}|꽉참:{m['crowd']}|가치{m['m']}:{','.join(m['val'])}{'(덜오름)' if m['lag'] else ''}|{'이익' if m['profit'] else '-'}|{'혼합섹터제외' if m.get('mix_ex') else '-'}")
     if m.get('mode') == '교집합':
         return f"교집합|{'∩'.join(m['conds'])}|순서:{m['tie']}|N{m['N']}c{m['cap']}"
     return f"{m['gate']}|{'+'.join(m['axes'])}|K{'전체' if m['K'] == 99 else m['K']}|{','.join(m['facs'])}|N{m['N']}c{m['cap']}|{'이익' if m['profit'] else '-'}|{'안달림' if m['noran'] else '-'}|{m['sign']}"
@@ -558,6 +563,29 @@ def walkforward(store, start=2017):
     return pd.DataFrame(rows).set_index('year'), picks
 
 
+def state_marg(T):
+    x = T[T.index.str.startswith('2단계')]
+    if x.empty:
+        return pd.DataFrame()
+    base = x['63일 16~23'].mean(); rows = []
+    parts = x.index.str.split('|')
+    tests = [(f'섹터재료:{a}', parts.str[1].str.contains(a, regex=False)) for a in ST_AX]
+    for lab, fn in (('꺾임교체', 3), ('과열감점', 4)):
+        tests.append((lab, parts.str[fn] == lab))
+    for r in REP:
+        tests.append((f'대장:{r}', parts.str[5].str.startswith(f'대장:{r}')))
+    tests.append(('대장 관문없음', parts.str[5].str.contains('관문없음')))
+    for c in CROWD:
+        tests.append((f'꽉참:{c}', parts.str[6] == f'꽉참:{c}'))
+    tests.append(('덜오름', parts.str[7].str.contains('덜오름')))
+    tests.append(('혼합섹터제외', parts.str[-1] == '혼합섹터제외'))
+    for lab, mk in tests:
+        y = x[np.asarray(mk, dtype=bool)]
+        if len(y):
+            rows.append({'항목': lab, '방법 수': len(y), '63일 차이': y['63일 16~23'].mean() - base, '플러스 해': y['플러스 해'].mean(), '24~': y['24~ 63일'].mean()})
+    return pd.DataFrame(rows).sort_values('63일 차이', ascending=False)
+
+
 def inter_marg(T):
     x = T[T.index.str.startswith('교집합')]
     if x.empty:
@@ -609,7 +637,9 @@ def write(store, picks_now, meta, IC, signs, wf, wfp, elapsed):
          f"판정 구간(2020~2023, 조건 샘플링 학습에 안 쓴 해): 1등 {wf.loc[2020:2023, '1등'].mean():+.2f}%p · 상위20 {wf.loc[2020:2023, '상위20'].mean():+.2f}%p, 상위20 백분위 {wf.loc[2020:2023, '상위20 그해 백분위'].mean():.0f}%", '',
          '운인지 실력인지: 걷기식으로 고른 방법들이 그해 전체 방법 중 몇 % 위치였나(50% = 운과 같음). 꾸준히 60% 이상이면 실력 쪽.', '',
          f"2017~2023 상위20 평균 백분위 {pre['상위20 그해 백분위'].mean():.0f}%, 1등 평균 백분위 {pre['1등 그해 백분위'].mean():.0f}%, 상위20이 50% 넘은 해 {(pre['상위20 그해 백분위'] > 50).sum()}/{len(pre)}", '',
-         wf.round(2).to_markdown(), '', '## 교집합 조건별 효과(그 조건이 들어간 방법 평균 - 전체 평균, 63일 16~23 %p)', '', inter_marg(T).round(2).to_markdown(index=False), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
+         wf.round(2).to_markdown(), '', '## 교집합 조건별 효과(그 조건이 들어간 방법 평균 - 전체 평균, 63일 16~23 %p)', '', inter_marg(T).round(2).to_markdown(index=False), '',
+         '## 2단계 상태형 로직 항목별 효과(63일 16~23 %p, 2단계 로직 평균 대비)', '', state_marg(T).round(2).to_markdown(index=False), '',
+         '## 로직 계열별 평균', '', T.assign(계열=T.index.str.split('|').str[0].where(T.index.str.split('|').str[0].isin(['2단계', '교집합']), '점수형')).groupby('계열')[['63일 16~23', '플러스 해', '24~ 63일', '안정성']].mean().round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
          '## 상위 30(사후 순위, 참고용)', '', T.head(30).round(2).to_markdown(), '',
          '## 요소 부호(올해 기준, 걷기식)', '', ', '.join(f"{k}{'+' if v > 0 else '-'}" for k, v in signs.get(meta['idx'].max().year, {}).items() if v), '']
     if picks_now:
@@ -682,14 +712,22 @@ def update_weights(store):
         y = v.loc['2016':f'{TRAIN_END}-09-30', 'ex63']
         if y.count() >= 24:
             rows[k] = y.mean()
-    if len(rows) < 200:
-        return
-    sr = pd.Series(rows); base = sr.mean(); sd = sr.std()
+    sr = pd.Series(rows) if rows else pd.Series(dtype=float); base = sr.mean() if len(sr) else 0; sd = sr.std() if len(sr) > 1 else 1
     w, eff = {}, {}
     for c in SEC_CONDS + STK_CONDS:
         x = sr[sr.index.str.contains(c, regex=False)]
         if len(x) >= 20:
             eff[c] = float((x.mean() - base) / (sd + 1e-9)); w[c] = float(np.exp(2 * eff[c]))
+    # 2단계 로직의 섹터 판단 재료도 같은 방식(학습 구간만)으로 추림
+    r2 = {k: v.loc['2016':f'{TRAIN_END}-09-30', 'ex63'].mean() for k, v in store.items() if k.startswith('2단계') and v['n'].mean() >= 2 and v.loc['2016':f'{TRAIN_END}-09-30', 'ex63'].count() >= 24}
+    if len(r2) >= 100:
+        s2 = pd.Series(r2); b2 = s2.mean(); d2 = s2.std()
+        for a in ST_AX:
+            x = s2[s2.index.str.split('|').str[1].str.contains(a, regex=False)]
+            if len(x) >= 20:
+                eff[a] = float((x.mean() - b2) / (d2 + 1e-9)); w[a] = float(np.exp(2 * eff[a]))
+    if not w:
+        return
     json.dump({'train_end': TRAIN_END, 'n_methods': len(sr), 'weights': w, 'effect_sd': eff},
               open(os.path.join(ROOT, 'docs', 'sim', 'cond_weights.json'), 'w'), ensure_ascii=False, indent=1)
 
