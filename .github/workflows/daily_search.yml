@@ -34,6 +34,11 @@ jobs:
           python3 -m sim.enrich
           python3 -m sim.enrich_flows || echo "수급 생략"
           python3 -m sim.enrich_extra || echo "추가 생략"
+          # 시장 국면 신호(FRED, 키 없이 공개 CSV): 미국 장단기 금리차, 하이일드 스프레드, 한국 CPI
+          mkdir -p ../data/macro
+          for id in T10Y2Y BAMLH0A0HYM2 CPALTT01KRM659N KORCPIALLMINMEI; do
+            curl -sfL --max-time 60 "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$id&cosd=2010-01-01" -o ../data/macro/$id.csv && head -2 ../data/macro/$id.csv && wc -l ../data/macro/$id.csv || { rm -f ../data/macro/$id.csv; echo "$id 못 받음"; }
+          done
       - name: 탐색
         run: cd src && python3 -m sim.daily_search ${{ inputs.deadline || 'auto' }} ${{ github.run_id }}_${{ matrix.shard }} 2>&1 | grep -v -i warn | tail -30
       - uses: actions/upload-artifact@v4

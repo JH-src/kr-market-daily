@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from . import engine as E
 from . import engine3 as E3
+from . import data as Dm
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WORK = os.environ.get('SIM_CACHE', '/tmp/sim_cache')
@@ -58,6 +59,19 @@ def build():
     X['logcap'] = np.log(cap)
     X['persist20'] = persist(P, ma20)
     X['val_surge'] = val20 / val.rolling(120, min_periods=60).mean()
+    # 기술적 지표(리서치 보고서 반영): 볼린저 밴드, MACD, 1년 변동성, 6개월 모멘텀
+    sd20 = P.rolling(20, min_periods=20).std()
+    X['pctb'] = (P - (ma20 - 2 * sd20)) / (4 * sd20)                       # %B: 0=하단, 1=상단
+    bw = 4 * sd20 / ma20
+    X['bb_squeeze'] = (bw <= bw.rolling(120, min_periods=60).quantile(0.2)).astype('float32').where(bw.notna())   # 밴드폭이 6개월 중 하위 20%
+    e12, e26 = P.ewm(span=12, adjust=False, min_periods=26).mean(), P.ewm(span=26, adjust=False, min_periods=26).mean()
+    macd = e12 - e26; sig = macd.ewm(span=9, adjust=False, min_periods=9).mean()
+    X['macd_h'] = (macd - sig) / P
+    X['macd_pos'] = (macd > 0).astype('float32').where(macd.notna())
+    gc = ((macd > sig) & (macd.shift(1) <= sig.shift(1))).astype('float32')
+    X['macd_gc5'] = gc.rolling(5, min_periods=1).max().where(macd.notna())   # 최근 5일 안 골든크로스
+    X['low_vol252'] = -ret.rolling(252, min_periods=200).std() * np.sqrt(252)
+    X['mom6'] = P.shift(21) / P.shift(126) - 1
     # 섹터 지수(시총 가중)와 섹터 기준 상대 수익
     SI = C.secidx.loc[dates]
     secs = sorted(set(sec.dropna()) & set(SI.columns))
@@ -111,6 +125,7 @@ def build():
     X['frgn_streak'] = pos.apply(lambda c: c.groupby((c == 0).cumsum()).cumsum()).astype('float32').where(fr.notna())
     X['orgn60_cap'] = og.rolling(60, min_periods=45).sum() / cap
     X['fo_vs_prsn'] = ((fo20 > 0) & (X['orgn20_cap'].notna())).astype('float32').where(fo20.notna())
+    X['fo20_val'] = fo20 / (val20 * 20)          # 수급을 거래대금으로 정규화(보고서: 시총 대비와 비교)
     # 실현 결과: 뽑은 뒤 수급 유입(t+1~t+h 외국인+기관 순매수/시총)
     Y = {}
     for h in H:
@@ -125,6 +140,22 @@ def build():
     for k, col in (('per', 'per'), ('psr', 'psr'), ('debt_ratio', 'debt_ratio')):
         if col in pan:
             X[k] = pan.pivot_table(index='date', columns='code', values=col).reindex(columns=keep).reindex(dates, method='ffill')
+    # PEG(PER ÷ 순이익 1년 성장률%), 마법공식(이익수익률 순위 + 자본수익률 근사 순위)
+    piv = lambda c: pan.pivot_table(index='date', columns='code', values=c).reindex(columns=keep).sort_index()
+    if {'ni_ttm', 'op_ttm', 'eq', 'debt'} <= set(pan.columns):
+        ni = piv('ni_ttm')
+        nim = ni.resample('ME').last()
+        prev = nim.shift(12).reindex(ni.index, method='ffill')          # 1년 전 월말 순이익
+        g = ((ni / prev - 1) * 100).where((prev > 0) & (ni > 0))
+        perm = piv('per')
+        X['peg'] = (perm / g).where((perm > 0) & (g > 0)).reindex(dates, method='ffill')
+        opt = piv('op_ttm')
+        X['roc'] = (opt / (piv('eq') + piv('debt'))).where(opt > 0).reindex(dates, method='ffill')   # 자본수익률 근사(영업이익 ÷ 총자산)
+        capm = piv('cap')
+        X['ey_m'] = (opt / capm).reindex(dates, method='ffill')     # 이익수익률 근사(영업이익 ÷ 시총, 순부채 미반영)
+        mey = ni.where(ni > -1e30).sum(axis=1, min_count=100) / capm.where(ni.notna()).sum(axis=1, min_count=100)   # 시장 이익수익률(일드갭용)
+    else:
+        mey = None
     for k in FUND:
         if '_' + k in pan:
             m = pan.pivot_table(index='date', columns='code', values='_' + k).reindex(columns=keep)
@@ -180,15 +211,92 @@ def build():
     # 섹터 대장(시총 상위 3) 종목들의 20일선 위 흐름 평균
     S['lead_persist20'] = pd.DataFrame({s: X['persist20'][sec.index[sec == s]].where(rc[sec.index[sec == s]] <= 3).mean(axis=1) for s in secs})
     S['sec_above60_share'] = pd.DataFrame({s: (X['g60'][sec.index[sec == s]].where(uni[sec.index[sec == s]]) > 0).mean(axis=1) for s in secs})
+    if 'peg' in X:
+        X['peg_inv'] = -X['peg']
+        X['magic'] = X['ey_m'].where(uni).rank(axis=1, pct=True) + X['roc'].where(uni).rank(axis=1, pct=True)   # 그린블라트 마법공식(순위 합)
+    if 'debt_ratio' in X:
+        X['debt_low'] = -X['debt_ratio']
+    G = market_gates(C, dates, mey)
     # 판단일: D0 이후, 63일 뒤 결과가 있는 날까지(결과 없는 최근일은 현재 판정에만)
     idx = dates[dates >= D0]
     X = {kk: f32(v.loc[idx]) for kk, v in X.items()}
     Y = {kk: f32(v.loc[idx]) for kk, v in Y.items()}
     S = {kk: v.loc[idx] for kk, v in S.items()}
-    meta = {'idx': idx, 'uni': uni.loc[idx], 'sec': sec, 'secs': secs, 'nS': nS.loc[idx], 'hasf': hasf, 'cap': f32(cap.loc[idx]),
+    meta = {'G': {kk: v.reindex(idx) for kk, v in G.items()}, 'idx': idx, 'uni': uni.loc[idx], 'sec': sec, 'secs': secs, 'nS': nS.loc[idx], 'hasf': hasf, 'cap': f32(cap.loc[idx]),
             'names': C.W['name'].reindex(keep), 'flow_cov': float(hasf.mean())}
     print(f'준비 {time.time() - t0:.0f}초, 종목 {len(keep)}, 날짜 {len(idx)}, 수급 보유 {hasf.mean():.0%}', flush=True)
     return X, Y, S, meta
+
+
+def _fred(sid, lag_days):
+    """data/macro/<id>.csv(Actions에서 FRED로 받아 둔 것). 발표 지연만큼 날짜를 미룸. 없으면 None."""
+    f = os.path.join(ROOT, 'data', 'macro', f'{sid}.csv')
+    if not os.path.exists(f):
+        return None
+    d = pd.read_csv(f)
+    d.columns = ['date', 'v']
+    d['v'] = pd.to_numeric(d['v'], errors='coerce')
+    s = pd.Series(d['v'].values, index=pd.to_datetime(d['date']) + pd.Timedelta(days=lag_days)).dropna().sort_index()
+    return s if len(s) else None
+
+
+def market_gates(C, dates, mey):
+    """시장 국면 신호(날짜별 값). 리서치 보고서의 매크로 필터: 추세, 국면 점수, 자체 공포·탐욕, 일드갭, 장단기 금리차, 하이일드 스프레드, 물가."""
+    k = C.kospi.reindex(dates).ffill()
+    G = {'kospi_ma200': k / k.rolling(200, min_periods=200).mean() - 1}
+    b = C.breadth.reindex(dates); vk = C.vk.reindex(dates).ffill()
+    sc = np.sign(G['kospi_ma200']).fillna(0) + np.where(b > 50, 1, np.where(b < 30, -1, 0))
+    vr = vk / vk.shift(1).rolling(50, min_periods=50).mean()
+    sc = sc + np.where(vr > 1.2, -1, np.where(vr < 0.9, 1, 0))
+    G['regime'] = pd.Series(sc, index=dates).where(G['kospi_ma200'].notna())
+    try:
+        bd = Dm._read('idx_bond', ['BAS_DD', 'BND_IDX_GRP_NM', 'TOT_EARNG_IDX', 'BND_IDX_AVG_YD'])
+        bd['BAS_DD'] = pd.to_datetime(bd['BAS_DD'])
+        num = lambda x: pd.to_numeric(x.str.replace(',', ''), errors='coerce')
+        ktb = bd[bd['BND_IDX_GRP_NM'].str.strip() == 'KTB 지수'].drop_duplicates('BAS_DD').set_index('BAS_DD').sort_index()
+        prime = bd[bd['BND_IDX_GRP_NM'].str.strip() == '국고채프라임지수'].drop_duplicates('BAS_DD').set_index('BAS_DD').sort_index()
+        ktb_tr = num(ktb['TOT_EARNG_IDX']).reindex(dates).ffill()
+        yld = num(prime['BND_IDX_AVG_YD']).reindex(dates).ffill()
+    except Exception as e:
+        print('채권 자료 생략', e); ktb_tr = yld = None
+    pr = lambda x: x.rolling(250, min_periods=120).rank(pct=True) * 100
+    comp = [pr(k / k.rolling(125, min_periods=125).mean() - 1), pr(b), pr(-(vk / vk.rolling(50, min_periods=50).mean()))]
+    if ktb_tr is not None:
+        comp.append(pr(k.pct_change(20) - ktb_tr.pct_change(20)))
+    G['fg'] = pd.concat(comp, axis=1).mean(axis=1, skipna=True).where(pd.concat(comp, axis=1).notna().sum(axis=1) >= 3)
+    if mey is not None and yld is not None:
+        G['yield_gap'] = mey.reindex(dates, method='ffill') * 100 - yld        # %p
+    for nm, sid, lag in (('t10y2y', 'T10Y2Y', 1), ('hy', 'BAMLH0A0HYM2', 1)):
+        v = _fred(sid, lag)
+        if v is not None:
+            G[nm] = v.reindex(v.index.union(dates)).ffill(limit=10).reindex(dates)
+    v = _fred('CPALTT01KRM659N', 45)           # 한국 CPI 전년비(월, 발표 지연 감안 45일 미룸)
+    if v is None:
+        v = _fred('KORCPIALLMINMEI', 45)
+        if v is not None:
+            v = (v / v.shift(12) - 1) * 100
+    if v is not None:
+        G['cpi'] = v.reindex(v.index.union(dates)).ffill(limit=70).reindex(dates)
+    for kk, vv in G.items():
+        print('국면', kk, f'{vv.notna().mean():.0%}', flush=True)
+    return G
+
+
+GATES = {'코스피200일선위': lambda G: G['kospi_ma200'] > 0, '국면점수-2초과': lambda G: G['regime'] > -2, '국면점수0이상': lambda G: G['regime'] >= 0,
+         '공포탐욕75미만': lambda G: G['fg'] < 75, '공포탐욕25~75': lambda G: (G['fg'] > 25) & (G['fg'] < 75),
+         '일드갭3%p+': lambda G: G['yield_gap'] > 3, '일드갭플러스': lambda G: G['yield_gap'] > 0,
+         '미국장단기차양수': lambda G: G['t10y2y'] > 0, '하이일드6%미만': lambda G: G['hy'] < 6, 'CPI4%미만': lambda G: G['cpi'] < 4}
+GATE_NEED = {'일드갭3%p+': 'yield_gap', '일드갭플러스': 'yield_gap', '미국장단기차양수': 't10y2y', '하이일드6%미만': 'hy', 'CPI4%미만': 'cpi',
+             '공포탐욕75미만': 'fg', '공포탐욕25~75': 'fg', '코스피200일선위': 'kospi_ma200', '국면점수-2초과': 'regime', '국면점수0이상': 'regime'}
+
+
+def gate_mask(name, meta):
+    """투자 여부(True=투자). 신호 자료가 없는 날은 판단 불가 → 투자(관문 없음과 같게)."""
+    G = meta.get('G', {})
+    if not name or name == '없음' or GATE_NEED[name] not in G:
+        return None
+    g = GATES[name](G)
+    return (g | G[GATE_NEED[name]].isna()).astype(bool)
 
 
 # ---------- 요소 부호(해마다 걷기식) ----------
@@ -226,7 +334,7 @@ SEC_GATES = ['전체', '단계', '추세', '추세-꺾임', '추세+초입']
 SEC_AXES = {'가격': ['sp_slope40w', 'sp_ret120', 'sp_gap200'], '추세흐름': ['tp_above60', 'tp_align', 'tp_above20', 'tp_rs60', 'tp_slope60', 'tp_rsslope'],
             '수급': ['sf_fo60'], '수급기세': ['sf_accel', 'sf_fo20'], '이익': ['se_opg'], '확산': ['sb_nearhi']}
 POOL = ['low_vol', 'hi52', 'mom12_1', 'val_surge', 'r1rel', 'rs3', 'r1', 'rep_cap', 'rep_val', 'fo60_cap', 'fo20_cap', 'fo_accel', 'frgn60_cap',
-        'orgn20_cap', 'pension60_cap'] + FUND
+        'orgn20_cap', 'pension60_cap', 'peg_inv', 'magic', 'pctb', 'macd_h', 'low_vol252', 'mom6', 'fo20_val', 'debt_low'] + FUND
 
 
 SEC_CONDS = ['섹:3개월추세', '섹:그날강함', '섹:꺾임아님', '섹:초입', '섹:가격상위5', '섹:수급가속', '섹:수급유입60', '섹:이익확산',
@@ -237,7 +345,9 @@ STK_CONDS = ['영업이익증가', '이익률개선', '신고가-10%내', '신�
              '20일선위', '60일선위', '120일선위', '정배열', '20일신고가', '60일선0~10%위', 'RSI50~65', 'RSI70미만', '1개월-10~+10%', '3개월상위30%', '저변동하위30%아님',
              '외국인연속5일', '기관60일매수', '외기매수개인매도', '매출증가', '매출가속', 'PER하위30%', 'PSR하위30%', '부채비율100%미만', '공급계약90일',
              '대형(시총200위내)', '중형(200~700위)', '거래대금증가1.2~2배', '섹터대비3개월덜오름', '12개월모멘텀상위30%',
-             '20일선위흐름20일+', '20일선위흐름40일+', '20일선위흐름10일이하(초입)']
+             '20일선위흐름20일+', '20일선위흐름40일+', '20일선위흐름10일이하(초입)',
+             'PEG1미만', 'PEG0.5이하', '피터린치(PEG1미만+부채100%미만)', '마법공식상위30%', '마법공식상위10%', '볼린저하단(%B<0.2)', '볼린저스퀴즈상단돌파',
+             'RSI30이하', 'RSI30+볼린저하단', 'MACD골든크로스5일내', 'MACD0선위', '1년저변동하위30%', '외기20일/거래대금상위30%', '6개월모멘텀상위10%']
 TIEB = ['low_vol', 'hi52', 'fo_accel', 'cap']
 
 
@@ -264,7 +374,7 @@ ST_AX = {'1주강도': 'rs_w1', '1개월강도': 'rs_m1', '3개월강도': 'rs_m
 MIXED = ['기타', '전문서비스', '사업지원', '금융', '지주', '기타제조', '인쇄']
 REP = {'시총1위': 'rep_cap', '거래대금1위': 'rep_val', '외기60일1위': 'fo60_cap'}
 CROWD = ['없음', '외기60일상위20%', 'RSI70+', '1개월급등상위20%', '셋중하나']
-VAL = ['bp', 'ep', 'op_yield', 'roe', 'op_g', 'opm_chg', 'low_vol']
+VAL = ['bp', 'ep', 'op_yield', 'roe', 'op_g', 'opm_chg', 'low_vol', 'peg_inv', 'magic', 'debt_low']
 
 
 def random_state():
@@ -297,15 +407,28 @@ def random_third():
     return m
 
 
+def random_switch():
+    """국면 전환(리서치 보고서 6장): 위험선호 국면엔 모멘텀(중소형), 위험회피 국면엔 방어 멀티팩터(대형: 1년 저변동+ROE+저부채, 순위 또는 Z점수)."""
+    return {'mode': '국면전환', 'sig': str(rng.choice([g for g in GATES])), 'on': str(rng.choice(['6개월모멘텀상위10%+MACD골든', '6개월모멘텀+MACD점수'])),
+            'on_size': str(rng.choice(['중소형', '전체'])), 'off': str(rng.choice(['방어3', '방어3+마법공식', '현금'])), 'agg': str(rng.choice(['순위', 'Z'])),
+            'sec': str(rng.choice(['전체', '추세'])), 'N': int(rng.choice([10, 20])), 'cap': int(rng.choice([2, 3]))}
+
+
 def random_method():
     u = rng.random()
-    if u < 0.4:
-        return random_third()
-    if u < 0.6:
-        return random_state()
-    if u < 0.9:
-        return random_inter()
-    return _random_score()
+    if u < 0.35:
+        m = random_third()
+    elif u < 0.5:
+        m = random_state()
+    elif u < 0.8:
+        m = random_inter()
+    elif u < 0.9:
+        m = _random_score()
+    else:
+        return random_switch()
+    if rng.random() < 0.4:                    # 시장 국면 관문(꺼지면 현금)
+        m['mg'] = str(rng.choice(list(GATES)))
+    return m
 
 
 _CORR = {}
@@ -466,6 +589,8 @@ def evaluate_state(m, X, Y, S, meta):
 
 
 def evaluate(m, X, Y, S, meta, signs):
+    if m.get('mode') == '국면전환':
+        return evaluate_switch(m, X, Y, S, meta)
     if m.get('mode') == '3단계':
         return evaluate_third(m, X, Y, S, meta)
     if m.get('mode') == '2단계':
@@ -479,11 +604,18 @@ def _random_score():
     m = {'gate': rng.choice(SEC_GATES), 'axes': sorted(rng.choice(list(SEC_AXES), size=rng.integers(1, 4), replace=False).tolist()),
          'K': int(rng.choice([2, 3, 5, 8, 99])), 'facs': sorted(rng.choice(POOL, size=rng.integers(2, 9), replace=False).tolist()),
          'N': int(rng.choice([5, 8, 12])), 'cap': int(rng.choice([1, 2, 3])), 'profit': bool(rng.random() < 0.6), 'noran': bool(rng.random() < 0.6),
-         'sign': rng.choice(['걷기식', '걷기식+고정가점'])}
+         'sign': rng.choice(['걷기식', '걷기식+고정가점']), 'agg': str(rng.choice(['순위', 'Z']))}
     return m
 
 
 def mname(m):
+    g = f"|국면:{m['mg']}" if m.get('mg') and m['mg'] != '없음' else ''
+    return _mname(m) + g
+
+
+def _mname(m):
+    if m.get('mode') == '국면전환':
+        return f"국면전환|신호:{m['sig']}|켜짐:{m['on']}({m['on_size']})|꺼짐:{m['off']}|{m['agg']}|섹:{m['sec']}|N{m['N']}c{m['cap']}"
     if m.get('mode') == '3단계':
         return (f"3단계|섹:{'+'.join(m['axes'])}|K{m['K']}~{m['Kout']}|{'꺾임교체' if m['brk'] else '-'}|{'과열감점' if m['rsi_cap'] else '-'}"
                 f"|대장:{'+'.join(m['lead_x'])}|차기:{m['nb']}{m['nb_n']}|가치{m['m']}:{','.join(m['val'])}{'(덜오름)' if m['lag'] else ''}|{'이익' if m['profit'] else '-'}"
@@ -493,7 +625,7 @@ def mname(m):
                 f"|대장:{m['rep']}{'(관문없음)' if m.get('lead_free') else ''}|꽉참:{m['crowd']}|가치{m['m']}:{','.join(m['val'])}{'(덜오름)' if m['lag'] else ''}|{'이익' if m['profit'] else '-'}|{'혼합섹터제외' if m.get('mix_ex') else '-'}")
     if m.get('mode') == '교집합':
         return f"교집합|{'∩'.join(m['conds'])}|순서:{m['tie']}|N{m['N']}c{m['cap']}"
-    return f"{m['gate']}|{'+'.join(m['axes'])}|K{'전체' if m['K'] == 99 else m['K']}|{','.join(m['facs'])}|N{m['N']}c{m['cap']}|{'이익' if m['profit'] else '-'}|{'안달림' if m['noran'] else '-'}|{m['sign']}"
+    return f"{m['gate']}|{'+'.join(m['axes'])}|K{'전체' if m['K'] == 99 else m['K']}|{','.join(m['facs'])}|N{m['N']}c{m['cap']}|{'이익' if m['profit'] else '-'}|{'안달림' if m['noran'] else '-'}|{m['sign']}" + ('|Z점수' if m.get('agg') == 'Z' else '')
 
 
 def sector_mask(m, S, meta):
@@ -562,7 +694,13 @@ def cond(c, X, S, meta):
          'PER하위30%': lambda: X['per'].where(X['per'] > 0).rank(axis=1, pct=True) < 0.3, 'PSR하위30%': lambda: X['psr'].where(X['psr'] > 0).rank(axis=1, pct=True) < 0.3,
          '부채비율100%미만': lambda: X['debt_ratio'] < 100, '공급계약90일': lambda: X['supply90'] > 0,
          '대형(시총200위내)': lambda: meta['cap'].rank(axis=1, ascending=False) <= 200, '중형(200~700위)': lambda: meta['cap'].rank(axis=1, ascending=False).between(201, 700) if False else ((meta['cap'].rank(axis=1, ascending=False) > 200) & (meta['cap'].rank(axis=1, ascending=False) <= 700)),
-         '거래대금증가1.2~2배': lambda: (X['val_surge'] >= 1.2) & (X['val_surge'] <= 2), '섹터대비3개월덜오름': lambda: X['rs3'] < 0, '12개월모멘텀상위30%': lambda: pct('mom12_1') > 0.7}
+         '거래대금증가1.2~2배': lambda: (X['val_surge'] >= 1.2) & (X['val_surge'] <= 2), '섹터대비3개월덜오름': lambda: X['rs3'] < 0, '12개월모멘텀상위30%': lambda: pct('mom12_1') > 0.7,
+         'PEG1미만': lambda: X['peg'] < 1, 'PEG0.5이하': lambda: X['peg'] <= 0.5, '피터린치(PEG1미만+부채100%미만)': lambda: (X['peg'] < 1) & (X['debt_ratio'] < 100),
+         '마법공식상위30%': lambda: pct('magic') > 0.7, '마법공식상위10%': lambda: pct('magic') > 0.9,
+         '볼린저하단(%B<0.2)': lambda: X['pctb'] < 0.2, '볼린저스퀴즈상단돌파': lambda: (X['bb_squeeze'].shift(1) > 0) & (X['pctb'] > 1),
+         'RSI30이하': lambda: X['rsi'] <= 30, 'RSI30+볼린저하단': lambda: (X['rsi'] <= 30) & (X['pctb'] < 0.1),
+         'MACD골든크로스5일내': lambda: X['macd_gc5'] > 0, 'MACD0선위': lambda: X['macd_pos'] > 0,
+         '1년저변동하위30%': lambda: pct('low_vol252') > 0.7, '외기20일/거래대금상위30%': lambda: pct('fo20_val') > 0.7, '6개월모멘텀상위10%': lambda: pct('mom6') > 0.9}
     try:
         v = m[c]()
     except KeyError:
@@ -584,6 +722,39 @@ def evaluate_inter(m, X, Y, S, meta):
         ok &= v
     score = (meta['cap'] if m['tie'] == 'cap' else X[m['tie']]).where(ok)
     return finish(m, score, Y, meta)
+
+
+def zs(x):
+    """Z점수(같은 날 후보 안에서). 이상치는 ±3에서 자름(보고서: Z점수는 이상치에 민감)."""
+    return x.sub(x.mean(axis=1), axis=0).div(x.std(axis=1) + 1e-12, axis=0).clip(-3, 3) / 6
+
+
+def evaluate_switch(m, X, Y, S, meta):
+    uni = meta['uni']
+    g = gate_mask(m['sig'], meta)
+    if g is None:
+        return None
+    capr = meta['cap'].rank(axis=1, ascending=False)
+    base = uni.copy()
+    if m['sec'] == '추세':
+        secs = meta['secs']
+        base &= sec_to_stock((S['tp_above60'][secs] >= 0.6) & (S['tp_align'][secs] >= 0.5), meta)
+    agg = (lambda v, ok: zs(v.where(ok))) if m['agg'] == 'Z' else (lambda v, ok: v.where(ok).rank(axis=1, pct=True))
+    on_ok = base & (capr > 200) if m['on_size'] == '중소형' else base
+    if m['on'] == '6개월모멘텀상위10%+MACD골든':
+        mo = X['mom6'].where(on_ok)
+        on = mo.where((mo.rank(axis=1, pct=True) > 0.9) & (X['macd_gc5'] > 0))
+    else:
+        on = agg(X['mom6'], on_ok) + agg(X['macd_h'], on_ok)
+    off_ok = base & (capr <= 200)
+    if m['off'] == '현금':
+        off = pd.DataFrame(np.nan, index=uni.index, columns=uni.columns)
+    else:
+        fs = ['low_vol252', 'roe', 'debt_low'] + (['magic'] if m['off'] == '방어3+마법공식' else [])
+        off = sum(agg(X[f], off_ok).fillna(0) for f in fs).where(off_ok)
+    gv = g.values[:, None]
+    score = pd.DataFrame(np.where(gv, on.values, off.values), index=uni.index, columns=uni.columns)
+    return finish(dict(m, mg=m['sig']) if m['off'] == '현금' else m, score, Y, meta)   # 꺼짐=현금이면 그날은 현금으로 채점
 
 
 def evaluate_score(m, X, Y, S, meta, signs):
@@ -611,7 +782,7 @@ def evaluate_score(m, X, Y, S, meta, signs):
             sg = np.where(sg == 0, 1, sg).astype('float32')   # 부호가 아직 안 정해진 요소도 가점으로(가설 그대로)
         if not np.any(sg):
             continue
-        r = X[f].where(ok).rank(axis=1, pct=True) - 0.5
+        r = zs(X[f].where(ok)) if m.get('agg') == 'Z' else X[f].where(ok).rank(axis=1, pct=True) - 0.5
         score += r.fillna(0).mul(sg, axis=0); used += 1
     if used == 0:
         return None
@@ -628,6 +799,10 @@ def finish(m, score, Y, meta):
         srank[cols] = score[cols].rank(axis=1, ascending=False, method='first')
     sc2 = score.where(srank <= m['cap'])
     pick = (sc2.rank(axis=1, ascending=False, method='first') <= m['N']) & sc2.notna()
+    gm = gate_mask(m.get('mg'), meta)
+    if gm is not None:
+        pick &= gm.values[:, None]                 # 국면 관문이 꺼진 날은 현금
+    cash = (~gm) if gm is not None else pd.Series(False, index=idx)
     n = pick.sum(axis=1)
     res = {'n': n}
     ew_ok = uni
@@ -644,8 +819,11 @@ def finish(m, score, Y, meta):
         res[f'fx{h}'] = (fl.where(pick & hf).mean(axis=1) - fl.where(uni & hf).mean(axis=1)) * 100
     prev = pick.shift(5).fillna(False).astype(bool)
     res['stab'] = (pick & prev).sum(axis=1) / n.replace(0, np.nan)
+    for h in H:                                    # 현금인 날: 수익 0, 시장 대비 = -시장
+        res[f'ex{h}'] = res[f'ex{h}'].where(~cash, -Y[f'ret{h}'].where(uni).mean(axis=1) * 100)
     R = pd.DataFrame(res)
-    R.loc[R['n'] == 0, [c for c in R.columns if c != 'n']] = np.nan
+    R['cash'] = cash.astype('float32')
+    R.loc[(R['n'] == 0) & ~cash, [c for c in R.columns if c not in ('n', 'cash')]] = np.nan
     R = R.resample('ME').mean().astype('float32')        # 월 평균으로 저장(누적 용량 줄이기)
     return R, pick
 
@@ -667,7 +845,7 @@ def summarize(name, R):
 
 def walkforward(store, start=2017):
     """해마다 이전 해들의 연도 성과(63일 결과 확인 뒤)로 방법 고르기: 1등, 상위5 평균, 상위20 평균."""
-    names = [k for k, v in store.items() if v['n'].mean() >= 2]     # 평균 2종목 미만은 우연이 커서 제외
+    names = [k for k, v in store.items() if navg(v) >= 2]     # 평균 2종목 미만은 우연이 커서 제외
     Yall = pd.DataFrame({k: yearly_stats(store[k])['ex63'] for k in names})
     rows, picks = [], {}
     for Yr in range(start, int(Yall.index.max()) + 1):
@@ -742,8 +920,50 @@ def inter_marg(T):
     return pd.DataFrame(rows).sort_values('63일 차이', ascending=False)
 
 
+def navg(v):
+    """현금(국면 관문 꺼짐)인 날을 뺀 평균 종목 수."""
+    c = v['cash'].mean() if 'cash' in v else 0
+    return v['n'].mean() / max(1 - (c if c == c else 0), 0.05)
+
+
+def gate_marg(T):
+    """시장 국면 관문(보고서 매크로 필터): 같은 계열에서 관문 있는 방법 평균 - 관문 없는 방법 평균."""
+    fam = T.index.str.split('|').str[0]
+    fam = pd.Series(np.where(pd.Series(fam).isin(['2단계', '3단계', '교집합', '국면전환']), fam, '점수형'), index=T.index)
+    has = T.index.str.contains('|국면:', regex=False)
+    rows = []
+    for g in GATES:
+        mk = T.index.str.endswith(f'|국면:{g}')
+        if mk.sum() == 0:
+            continue
+        d = []
+        for f in set(fam[mk]):
+            a = T[mk & (fam == f).values]; b = T[~has & (fam == f).values & ~T.index.str.startswith('국면전환')]
+            if len(a) and len(b):
+                d.append((len(a), a['63일 16~23'].mean() - b['63일 16~23'].mean(), a['플러스 해'].mean() - b['플러스 해'].mean(), a['24~ 63일'].mean() - b['24~ 63일'].mean()))
+        if d:
+            w = np.array([x[0] for x in d], float)
+            rows.append({'관문': g, '방법 수': int(w.sum()), '63일 차이': np.average([x[1] for x in d], weights=w), '플러스 해 차이': np.average([x[2] for x in d], weights=w),
+                         '24~ 차이': np.average([x[3] for x in d], weights=w)})
+    sw = T[T.index.str.startswith('국면전환')]
+    for lab, key in (('국면전환', 1), ('국면전환', 2), ('국면전환', 3), ('국면전환', 4)):
+        if len(sw):
+            v = sw.index.str.split('|').str[key]
+            for val in sorted(set(v)):
+                x = sw[v == val]
+                rows.append({'관문': f'{lab}:{val}', '방법 수': len(x), '63일 차이': x['63일 16~23'].mean(), '플러스 해 차이': x['플러스 해'].mean(), '24~ 차이': x['24~ 63일'].mean()})
+    sc = T[fam.values == '점수형']
+    if len(sc):
+        z = sc.index.str.endswith('|Z점수') | sc.index.str.contains('|Z점수|', regex=False)
+        for lab, mk in (('점수형 순위합산', ~z), ('점수형 Z점수합산', z)):
+            x = sc[mk]
+            if len(x):
+                rows.append({'관문': lab, '방법 수': len(x), '63일 차이': x['63일 16~23'].mean(), '플러스 해 차이': x['플러스 해'].mean(), '24~ 차이': x['24~ 63일'].mean()})
+    return pd.DataFrame(rows)
+
+
 def marginals(T):
-    T = T[~T.index.str.startswith('교집합')]
+    T = T[~T.index.str.startswith(('교집합', '2단계', '3단계', '국면전환'))]
     rows = []
     parts = T.index.str.split('|')
     dims = {'섹터 관문': 0, '섹터 축': 1, '섹터 수': 2, '구조': 4, '이익 관문': 5, '안 달린 종목': 6, '부호': 7}
@@ -781,8 +1001,11 @@ def write(store, picks_now, meta, IC, signs, wf, wfp, elapsed):
          f"2017~2023 상위20 평균 백분위 {pre['상위20 그해 백분위'].mean():.0f}%, 1등 평균 백분위 {pre['1등 그해 백분위'].mean():.0f}%, 상위20이 50% 넘은 해 {(pre['상위20 그해 백분위'] > 50).sum()}/{len(pre)}", '',
          wf.round(2).to_markdown(), '', '## 교집합 조건별 효과(그 조건이 들어간 방법 평균 - 전체 평균, 63일 16~23 %p)', '', inter_marg(T).round(2).to_markdown(index=False), '',
          '## 3단계(주도 섹터 대장주 + 차기·유사 섹터 가치주) 항목별 효과(63일 16~23 %p, 3단계 평균 대비)', '', third_marg(T).round(2).to_markdown(index=False), '',
+         '## 리서치 보고서 반영: 시장 국면 관문·국면 전환·Z점수(63일 16~23 %p; 관문은 같은 계열 관문 없는 방법 대비, 꺼진 날은 현금으로 채점)', '',
+         '국면 신호 자료 범위: ' + ', '.join(f"{k} {v.notna().mean():.0%}" for k, v in meta.get('G', {}).items()) + '(자료 없는 날은 관문 없음과 같게 처리).', '',
+         gate_marg(T).round(2).to_markdown(index=False), '',
          '## 2단계 상태형 로직 항목별 효과(63일 16~23 %p, 2단계 로직 평균 대비)', '', state_marg(T).round(2).to_markdown(index=False), '',
-         '## 로직 계열별 평균', '', T.assign(계열=T.index.str.split('|').str[0].where(T.index.str.split('|').str[0].isin(['2단계', '3단계', '교집합']), '점수형')).groupby('계열')[['63일 16~23', '플러스 해', '126일 16~23', '126일 플러스 해', '24~ 63일', '안정성']].mean().round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
+         '## 로직 계열별 평균', '', T.assign(계열=T.index.str.split('|').str[0].where(T.index.str.split('|').str[0].isin(['2단계', '3단계', '교집합', '국면전환']), '점수형')).groupby('계열')[['63일 16~23', '플러스 해', '126일 16~23', '126일 플러스 해', '24~ 63일', '안정성']].mean().round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
          '## 상위 30(사후 순위, 참고용)', '', T.head(30).round(2).to_markdown(), '',
          '## 요소 부호(올해 기준, 걷기식)', '', ', '.join(f"{k}{'+' if v > 0 else '-'}" for k, v in signs.get(meta['idx'].max().year, {}).items() if v), '']
     if picks_now:
@@ -836,7 +1059,7 @@ def main(deadline, shard=None):
 
 def dump(store, pk, meta, IC, signs, shard, t0):
     os.makedirs('/tmp/out', exist_ok=True)
-    light = {k: meta[k] for k in ('idx', 'sec', 'names', 'flow_cov')}
+    light = {k: meta[k] for k in ('idx', 'sec', 'names', 'flow_cov', 'G') if k in meta}
     tmp = f'/tmp/out/store_{shard}.pkl.tmp'
     pickle.dump({'store': store, 'pk': {k: v[v].index.tolist() for k, v in pk.items()}, 'meta': light, 'signs': signs, 'sec': time.time() - t0}, open(tmp, 'wb'))
     os.replace(tmp, f'/tmp/out/store_{shard}.pkl')
@@ -850,7 +1073,7 @@ def update_weights(store):
     """조건별 효과를 학습 구간(2016~2019, 63일 결과)만으로 계산해 다음 회차 샘플링 확률에 반영(판정 구간 2020~에는 손대지 않음)."""
     rows = {}
     for k, v in store.items():
-        if not k.startswith('교집합') or v['n'].mean() < 2:
+        if not k.startswith('교집합') or navg(v) < 2:
             continue
         y = v.loc['2016':f'{TRAIN_END}-09-30', 'ex63']
         if y.count() >= 24:
@@ -862,7 +1085,7 @@ def update_weights(store):
         if len(x) >= 20:
             eff[c] = float((x.mean() - base) / (sd + 1e-9)); w[c] = float(np.exp(2 * eff[c]))
     # 2단계 로직의 섹터 판단 재료도 같은 방식(학습 구간만)으로 추림
-    r2 = {k: v.loc['2016':f'{TRAIN_END}-09-30', 'ex63'].mean() for k, v in store.items() if k.startswith('2단계') and v['n'].mean() >= 2 and v.loc['2016':f'{TRAIN_END}-09-30', 'ex63'].count() >= 24}
+    r2 = {k: v.loc['2016':f'{TRAIN_END}-09-30', 'ex63'].mean() for k, v in store.items() if k.startswith('2단계') and navg(v) >= 2 and v.loc['2016':f'{TRAIN_END}-09-30', 'ex63'].count() >= 24}
     if len(r2) >= 100:
         s2 = pd.Series(r2); b2 = s2.mean(); d2 = s2.std()
         for a in ST_AX:
