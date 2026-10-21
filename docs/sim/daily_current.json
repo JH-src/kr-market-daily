@@ -1,9 +1,10 @@
 {
  "asof": "2026-10-19",
- "methods": 40478,
+ "methods": 51528,
  "top20": [
   "추세|가격+수급기세+확산|K5|buyback90,fo20_cap,opm_chg,rep_cap|N8c2|-|안달림|걷기식",
   "추세+초입|수급+이익+추세흐름|K8|fo20_cap,ry|N5c2|이익|안달림|걷기식",
+  "전체|수급+수급기세+이익|K5|bp,fo20_cap,fo60_cap,orgn20_cap,r1rel,rep_val,supply90,val_surge|N5c3|이익|안달림|걷기식+고정가점",
   "추세|가격|K5|fo20_cap,low_vol,opm_chg,orgn20_cap,rs3,supply90|N5c3|이익|안달림|걷기식",
   "추세+초입|수급기세+이익|K전체|accel_d,fo20_cap,fo_accel,orgn20_cap,roe,ry|N8c3|이익|안달림|걷기식",
   "추세+초입|수급+수급기세+확산|K5|buyback90,fo20_cap,fo_accel|N8c1|이익|안달림|걷기식",
@@ -20,8 +21,7 @@
   "추세+초입|가격+수급+이익|K8|fo20_cap,hi52|N8c3|이익|안달림|걷기식+고정가점",
   "추세+초입|수급+이익|K8|low_vol,op_g,orgn20_cap,pension60_cap,r1rel,rep_cap,supply90|N8c3|이익|안달림|걷기식",
   "추세+초입|확산|K8|fo_accel,frgn60_cap,low_vol,op_yield,rep_cap,rep_val,val_surge|N12c3|-|-|걷기식",
-  "추세-꺾임|수급+확산|K8|accel_d,bp,buyback90,fo20_cap,fo_accel,major_foreign90,roe|N8c2|이익|-|걷기식",
-  "전체|수급기세|K5|buyback90,fo_accel,op_yield,rep_val,rs3,ry,supply90|N5c3|이익|안달림|걷기식"
+  "추세-꺾임|수급+확산|K8|accel_d,bp,buyback90,fo20_cap,fo_accel,major_foreign90,roe|N8c2|이익|-|걷기식"
  ],
  "picks": [
   {
@@ -55,20 +55,26 @@
    "count": 6
   },
   {
+   "code": "123330",
+   "name": "제닉",
+   "sector": "화장품",
+   "count": 6
+  },
+  {
    "code": "330590",
    "name": "롯데리츠",
    "sector": "부동산",
    "count": 5
   },
   {
-   "code": "123330",
-   "name": "제닉",
-   "sector": "화장품",
-   "count": 5
-  },
-  {
    "code": "090430",
    "name": "아모레퍼시픽",
+   "sector": "화장품",
+   "count": 4
+  },
+  {
+   "code": "439090",
+   "name": "마녀공장",
    "sector": "화장품",
    "count": 4
   },
@@ -100,12 +106,6 @@
    "code": "066970",
    "name": "엘앤에프",
    "sector": "2차전지",
-   "count": 3
-  },
-  {
-   "code": "439090",
-   "name": "마녀공장",
-   "sector": "화장품",
    "count": 3
   },
   {
@@ -199,9 +199,9 @@
    "count": 1
   },
   {
-   "code": "024110",
-   "name": "기업은행",
-   "sector": "은행",
+   "code": "089030",
+   "name": "테크윙",
+   "sector": "반도체 장비",
    "count": 1
   }
  ]
