@@ -1,7 +1,8 @@
 {
  "asof": "2026-10-19",
- "methods": 51528,
+ "methods": 62382,
  "top20": [
+  "전체|수급+수급기세+이익|K8|fo_accel,low_vol,major_foreign90,op_yield,r1,rep_val,roe|N8c3|이익|안달림|걷기식",
   "추세|가격+수급기세+확산|K5|buyback90,fo20_cap,opm_chg,rep_cap|N8c2|-|안달림|걷기식",
   "추세+초입|수급+이익+추세흐름|K8|fo20_cap,ry|N5c2|이익|안달림|걷기식",
   "전체|수급+수급기세+이익|K5|bp,fo20_cap,fo60_cap,orgn20_cap,r1rel,rep_val,supply90,val_surge|N5c3|이익|안달림|걷기식+고정가점",
@@ -17,24 +18,23 @@
   "추세|가격+추세흐름|K8|fo20_cap,mom12_1,orgn20_cap,supply90|N5c3|이익|안달림|걷기식",
   "추세|이익+확산|K전체|hi52,supply90,val_surge|N8c2|-|안달림|걷기식+고정가점",
   "추세|가격|K5|fo20_cap,low_vol,mom12_1,op_g|N8c2|이익|-|걷기식",
+  "3단계|섹:1주강도+3개월강도+60일선위비율+거래대금비중증가+외기가속|K3~4|꺾임교체|과열감점|대장:3개월섹터대비+신고가근접+외기20일+외기60일금액|차기:상관1|가치2:bp,ep,low_vol,op_g,op_yield|-|-|차기가치만",
   "추세|가격+수급+이익|K5|fo20_cap,low_vol,orgn20_cap,rs3|N8c3|이익|-|걷기식",
   "추세+초입|가격+수급+이익|K8|fo20_cap,hi52|N8c3|이익|안달림|걷기식+고정가점",
-  "추세+초입|수급+이익|K8|low_vol,op_g,orgn20_cap,pension60_cap,r1rel,rep_cap,supply90|N8c3|이익|안달림|걷기식",
-  "추세+초입|확산|K8|fo_accel,frgn60_cap,low_vol,op_yield,rep_cap,rep_val,val_surge|N12c3|-|-|걷기식",
-  "추세-꺾임|수급+확산|K8|accel_d,bp,buyback90,fo20_cap,fo_accel,major_foreign90,roe|N8c2|이익|-|걷기식"
+  "추세+초입|수급+이익|K8|low_vol,op_g,orgn20_cap,pension60_cap,r1rel,rep_cap,supply90|N8c3|이익|안달림|걷기식"
  ],
  "picks": [
   {
    "code": "023590",
    "name": "다우기술",
    "sector": "인터넷·IT서비스",
-   "count": 15
+   "count": 13
   },
   {
    "code": "357120",
    "name": "코람코라이프인프라리츠",
    "sector": "부동산",
-   "count": 11
+   "count": 9
   },
   {
    "code": "004170",
@@ -49,10 +49,22 @@
    "count": 7
   },
   {
+   "code": "123330",
+   "name": "제닉",
+   "sector": "화장품",
+   "count": 6
+  },
+  {
+   "code": "439090",
+   "name": "마녀공장",
+   "sector": "화장품",
+   "count": 5
+  },
+  {
    "code": "037270",
    "name": "YG PLUS",
    "sector": "인터넷·IT서비스",
-   "count": 6
+   "count": 5
   },
   {
    "code": "123330",
@@ -85,20 +97,14 @@
    "count": 4
   },
   {
-   "code": "014820",
-   "name": "동원시스템즈",
-   "sector": "2차전지",
-   "count": 4
-  },
-  {
-   "code": "377450",
-   "name": "리파인",
-   "sector": "인터넷·IT서비스",
-   "count": 4
-  },
-  {
    "code": "005490",
    "name": "POSCO홀딩스",
+   "sector": "2차전지",
+   "count": 3
+  },
+  {
+   "code": "014820",
+   "name": "동원시스템즈",
    "sector": "2차전지",
    "count": 3
   },
@@ -107,6 +113,24 @@
    "name": "엘앤에프",
    "sector": "2차전지",
    "count": 3
+  },
+  {
+   "code": "377450",
+   "name": "리파인",
+   "sector": "인터넷·IT서비스",
+   "count": 3
+  },
+  {
+   "code": "102260",
+   "name": "동성케미컬",
+   "sector": "화학",
+   "count": 2
+  },
+  {
+   "code": "241770",
+   "name": "메카로",
+   "sector": "반도체 장비",
+   "count": 2
   },
   {
    "code": "105560",
@@ -133,27 +157,9 @@
    "count": 2
   },
   {
-   "code": "054210",
-   "name": "이랜텍",
-   "sector": "2차전지",
-   "count": 2
-  },
-  {
-   "code": "334890",
-   "name": "이지스밸류플러스리츠",
-   "sector": "부동산",
-   "count": 2
-  },
-  {
    "code": "126700",
    "name": "하이비젼시스템",
    "sector": "2차전지",
-   "count": 2
-  },
-  {
-   "code": "317400",
-   "name": "자이에스앤디",
-   "sector": "부동산",
    "count": 2
   },
   {
@@ -163,22 +169,28 @@
    "count": 2
   },
   {
-   "code": "279570",
-   "name": "케이뱅크",
-   "sector": "은행",
-   "count": 2
+   "code": "073240",
+   "name": "금호타이어",
+   "sector": "화학",
+   "count": 1
   },
   {
-   "code": "051900",
-   "name": "LG생활건강",
-   "sector": "화장품",
-   "count": 2
+   "code": "095340",
+   "name": "ISC",
+   "sector": "반도체 장비",
+   "count": 1
   },
   {
-   "code": "064850",
-   "name": "에프앤가이드",
-   "sector": "인터넷·IT서비스",
-   "count": 2
+   "code": "147830",
+   "name": "제룡산업",
+   "sector": "금속가공",
+   "count": 1
+  },
+  {
+   "code": "298020",
+   "name": "효성티앤씨",
+   "sector": "화학",
+   "count": 1
   },
   {
    "code": "055550",
