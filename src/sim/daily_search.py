@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 WORK = os.environ.get('SIM_CACHE', '/tmp/sim_cache')
 D0 = pd.Timestamp('2014-01-01')
 COST = 0.005
-H = (21, 63)
+H = (21, 63, 126)
 STEP = 1                       # 판단 간격(영업일). 1 = 매 영업일
 FUND = ['op_g', 'opm_chg', 'roe', 'ep', 'bp', 'op_yield', 'ry', 'accel_d', 'buyback90', 'major_foreign90', 'supply90']
 rng = np.random.default_rng(int(time.time()))
@@ -292,8 +292,8 @@ LEADX = {'외기20일금액': 'fo20_amt', '외기60일금액': 'fo60_amt', '시�
 def random_third():
     m = random_state()
     m.update({'mode': '3단계', 'lead_x': sorted(rng.choice(list(LEADX), size=int(rng.integers(1, 5)), replace=False).tolist()),
-              'nb': str(rng.choice(['상관', '순위상승', '공급망', '셋다'])), 'nb_n': int(rng.choice([1, 2, 3])),
-              'parts': str(rng.choice(['대장+차기가치', '대장만', '차기가치만'], p=[0.6, 0.2, 0.2]))})
+              'nb': str(rng.choice(['상관', '순위상승', '공급망', '셋다'], p=[0.4, 0.2, 0.2, 0.2])), 'nb_n': int(rng.choice([1, 2, 3])),
+              'parts': str(rng.choice(['대장+차기가치', '대장만', '차기가치만'], p=[0.3, 0.1, 0.6]))})   # 1차 결과에서 차기가치만이 가장 나아 더 자주
     return m
 
 
@@ -660,7 +660,8 @@ def summarize(name, R):
     pre = Yr.loc[2016:2023]; post = Yr.loc[2024:]
     t = lambda v: v.mean() / (v.std(ddof=1) / np.sqrt(v.count())) if v.count() > 2 else np.nan
     return {'방법': name, '63일 16~23': pre['ex63'].mean(), '플러스 해': int((pre['ex63'] > 0).sum()), '해 수': int(pre['ex63'].count()), 't': t(pre['ex63']),
-            '최악': pre['ex63'].min(), '21일 16~23': pre['ex21'].mean(), '섹터대비 63': pre['sx63'].mean(), '섹터 선택 63': pre['secx63'].mean(),
+            '최악': pre['ex63'].min(), '21일 16~23': pre['ex21'].mean(), '126일 16~23': pre['ex126'].mean() if 'ex126' in pre else np.nan,
+            '126일 플러스 해': int((pre['ex126'] > 0).sum()) if 'ex126' in pre else np.nan, '섹터대비 63': pre['sx63'].mean(), '섹터 선택 63': pre['secx63'].mean(),
             '수급유입 63': pre['fx63'].mean(), '24~ 63일': post['ex63'].mean(), '안정성': R['stab'].mean(), '평균 종목 수': R['n'].mean()}
 
 
@@ -781,7 +782,7 @@ def write(store, picks_now, meta, IC, signs, wf, wfp, elapsed):
          wf.round(2).to_markdown(), '', '## 교집합 조건별 효과(그 조건이 들어간 방법 평균 - 전체 평균, 63일 16~23 %p)', '', inter_marg(T).round(2).to_markdown(index=False), '',
          '## 3단계(주도 섹터 대장주 + 차기·유사 섹터 가치주) 항목별 효과(63일 16~23 %p, 3단계 평균 대비)', '', third_marg(T).round(2).to_markdown(index=False), '',
          '## 2단계 상태형 로직 항목별 효과(63일 16~23 %p, 2단계 로직 평균 대비)', '', state_marg(T).round(2).to_markdown(index=False), '',
-         '## 로직 계열별 평균', '', T.assign(계열=T.index.str.split('|').str[0].where(T.index.str.split('|').str[0].isin(['2단계', '3단계', '교집합']), '점수형')).groupby('계열')[['63일 16~23', '플러스 해', '24~ 63일', '안정성']].mean().round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
+         '## 로직 계열별 평균', '', T.assign(계열=T.index.str.split('|').str[0].where(T.index.str.split('|').str[0].isin(['2단계', '3단계', '교집합']), '점수형')).groupby('계열')[['63일 16~23', '플러스 해', '126일 16~23', '126일 플러스 해', '24~ 63일', '안정성']].mean().round(2).to_markdown(), '', '## 무엇이 효과가 있나(방법들의 항목별 평균, 63일 16~23 %p)', '', M.round(2).to_markdown(index=False), '',
          '## 상위 30(사후 순위, 참고용)', '', T.head(30).round(2).to_markdown(), '',
          '## 요소 부호(올해 기준, 걷기식)', '', ', '.join(f"{k}{'+' if v > 0 else '-'}" for k, v in signs.get(meta['idx'].max().year, {}).items() if v), '']
     if picks_now:
