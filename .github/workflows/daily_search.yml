@@ -6,7 +6,7 @@ on:
         description: '탐색 마감(UTC) 또는 auto(5시간)'
         default: 'auto'
   schedule:
-    - cron: '5 */6 * * *'    # 6시간마다 새 방법을 만들어 이어서 경쟁(결과는 누적)
+    - cron: '5 12 * * *'    # 하루 1회(2026-10-22부터 대결은 새 요소 시험용으로 축소, 판정은 후보 로직 전진 기록)
 permissions:
   contents: write
   actions: read

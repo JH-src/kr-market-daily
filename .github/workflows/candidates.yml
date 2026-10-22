@@ -1,0 +1,35 @@
+name: candidates
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '10 21 * * *'   # 매일 06:10 KST: 후보 로직 선정·전진 기록
+permissions:
+  contents: write
+concurrency:
+  group: candidates
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SIM_CACHE: /tmp/simcache
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q pandas numpy tabulate
+      - name: 판단 재료
+        run: |
+          mkdir -p /tmp/simcache && cd src
+          python3 -c "from sim import data as D; D.prices(refresh=True)"
+          python3 -m sim.panel theme
+          python3 -m sim.enrich
+          python3 -m sim.enrich_flows || echo "수급 생략"
+          python3 -m sim.enrich_extra || echo "추가 생략"
+      - name: 후보 로직
+        run: cd src && python3 -m sim.candidates 2>&1 | grep -v -i warn | tail -40
+      - name: 커밋
+        run: |
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add docs/sim/candidates.md data/picks/candidates.csv
+          git commit -m "후보 로직 전진 기록" || exit 0
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
