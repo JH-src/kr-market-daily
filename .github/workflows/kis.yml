@@ -23,6 +23,8 @@ jobs:
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
         run: |
           cd src
+          # 1회성 작업(trigger.txt)은 push로 실행될 때만. 정기 실행은 항상 일별 수집(2026-10-23: 남은 trigger 때문에 정기 수집이 건너뛰어진 문제 수정)
+          if [ "${{ github.event_name }}" = "push" ]; then
           if grep -q probe ../kis/trigger.txt 2>/dev/null; then python3 kis_probe.py; fi
           if grep -q frgnprobe ../kis/trigger.txt 2>/dev/null; then python3 frgn_probe.py; exit 0; fi
           if grep -q frgnnow ../kis/trigger.txt 2>/dev/null; then python3 kis_frgn_now.py; exit 0; fi
@@ -32,9 +34,10 @@ jobs:
           if grep -q stockinfo ../kis/trigger.txt 2>/dev/null; then python3 kis_stockinfo.py; exit 0; fi
           if grep -q idxdaily ../kis/trigger.txt 2>/dev/null; then python3 kis_idx_daily.py; exit 0; fi
           if grep -q fundshist ../kis/trigger.txt 2>/dev/null; then python3 kis_funds_hist.py; exit 0; fi
-          D=$(grep -o 'date=[0-9]*' ../kis/trigger.txt | cut -d= -f2)
+          fi
+          D=""; [ "${{ github.event_name }}" = "push" ] && D=$(grep -o "date=[0-9]*" ../kis/trigger.txt | cut -d= -f2)
           python3 kis_eod.py $D || echo "eod 실패"
-          if grep -q eodonly ../kis/trigger.txt 2>/dev/null; then exit 0; fi
+          if [ "${{ github.event_name }}" = "push" ] && grep -q eodonly ../kis/trigger.txt 2>/dev/null; then exit 0; fi
           python3 kis_daily.py
           if [ "$(date -u +%H)" = "09" ]; then python3 kis_frgn_now.py || echo '보유비율 생략'; fi
       - name: 결과 저장
