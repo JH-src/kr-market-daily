@@ -114,9 +114,9 @@
   "msg": "정상처리 되었습니다.",
   "rows": {
    "output1": 1,
-   "output2": 6,
-   "output3": 8,
-   "output4": 5
+   "output2": 0,
+   "output3": 0,
+   "output4": 0
   },
   "http_error": null
  },

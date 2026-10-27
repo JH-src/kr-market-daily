@@ -1,11 +1,11 @@
 {
  "output1": {
-  "stck_prpr": "223500",
-  "prdy_vrss": "8000",
+  "stck_prpr": "225000",
+  "prdy_vrss": "12000",
   "prdy_vrss_sign": "2",
-  "prdy_ctrt": "3.71",
-  "acml_vol": "17617415",
-  "prdy_vol": "18908560",
+  "prdy_ctrt": "5.63",
+  "acml_vol": "14196879",
+  "prdy_vol": "11376006",
   "rprs_mrkt_kor_name": "KOSPI200"
  },
  "output2": [

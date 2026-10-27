@@ -1,0 +1,113 @@
+{
+ "master_rows": 5265,
+ "master_sample": [
+  "US\t22\tNAS\t나스닥\tAAAP\tNASAAAP\tPACER BARINGS CLO MARKET FLEX\tPACER BARINGS CLO MARKET FLEX ETF\t3\tUSD\t4\t\t25.3050\t1\t1\t930\t1600\tN\t\t000\t0\t0\t001\t   ",
+  "US\t22\tNAS\t나스닥\tAACG\tNASAACG\tATA 크리에티비티 글로벌(ADR)\tATA CREATIVITY GLOBAL SPON ADS EACH REP 2 ORD SHS\t2\tUSD\t4\t\t0.7307\t1\t1\t930\t1600\tN\t\t000\t0\t0\t   \t   ",
+  "US\t22\tNAS\t나스닥\tAACI\tNASAACI\t아마다 애퀴지션 III\tARMADA ACQUISITION CORPORATION III\t2\tUSD\t4\t\t10.0750\t1\t1\t930\t1600\tN\t\t000\t0\t0\t   \t   "
+ ],
+ "AAPL_19950103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 0,
+  "first": null,
+  "last": null
+ },
+ "AAPL_20050103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 0,
+  "first": null,
+  "last": null
+ },
+ "AAPL_20120103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20110811",
+  "last": "20120103"
+ },
+ "AAPL_20200102": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20190812",
+  "last": "20200102"
+ },
+ "AAPL_today": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20260605",
+  "last": "20261027"
+ },
+ "MSFT_19950103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 0,
+  "first": null,
+  "last": null
+ },
+ "MSFT_20050103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 0,
+  "first": null,
+  "last": null
+ },
+ "MSFT_20120103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20110811",
+  "last": "20120103"
+ },
+ "MSFT_20200102": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20190812",
+  "last": "20200102"
+ },
+ "MSFT_today": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20260605",
+  "last": "20261027"
+ },
+ "QQQ_19950103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 0,
+  "first": null,
+  "last": null
+ },
+ "QQQ_20050103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 0,
+  "first": null,
+  "last": null
+ },
+ "QQQ_20120103": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20110811",
+  "last": "20120103"
+ },
+ "QQQ_20200102": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20190812",
+  "last": "20200102"
+ },
+ "QQQ_today": {
+  "rt": "0",
+  "msg": "정상처리 되었습니다.",
+  "n": 100,
+  "first": "20260605",
+  "last": "20261027"
+ }
+}
