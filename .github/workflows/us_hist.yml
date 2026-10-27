@@ -1,0 +1,35 @@
+name: us-hist
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full 또는 recent'
+        default: 'full'
+permissions:
+  contents: write
+concurrency:
+  group: kis
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q pandas
+      - name: 나스닥 종목 일봉(조회 전용)
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: cd src && python3 kis_us_hist.py ${{ inputs.mode || 'full' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: us-close
+          path: /tmp/us_close.csv.gz
+          retention-days: 90
+      - name: 저장
+        run: |
+          git config user.name "kis-bot"; git config user.email "kis-bot@users.noreply.github.com"
+          git add data/fg && git commit -m "미국 시장 폭·신고가 시계열" || exit 0
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
