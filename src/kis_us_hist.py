@@ -39,9 +39,17 @@ def symbols():
 def fetch(tok, sym, start):
     rows, bymd = {}, ''
     for _ in range(60):
-        throttle()
-        r = K.call(tok, '/uapi/overseas-price/v1/quotations/dailyprice', 'HHDFS76240000',
-                   {'AUTH': '', 'EXCD': 'NAS', 'SYMB': sym, 'GUBN': '0', 'BYMD': bymd, 'MODP': '1'})
+        r = {}
+        for k in range(5):                                   # 끊김·일시 오류는 잠깐 쉬고 다시
+            throttle()
+            try:
+                r = K.call(tok, '/uapi/overseas-price/v1/quotations/dailyprice', 'HHDFS76240000',
+                           {'AUTH': '', 'EXCD': 'NAS', 'SYMB': sym, 'GUBN': '0', 'BYMD': bymd, 'MODP': '1'})
+                if r.get('http_error') or r.get('rt_cd') not in (None, '0'):
+                    time.sleep(1 + k); continue
+                break
+            except Exception:
+                time.sleep(2 + 2 * k)
         o = r.get('output2') or []
         ds = [(x.get('xymd'), x.get('clos')) for x in o if x.get('xymd') and x.get('clos')]
         if not ds:
