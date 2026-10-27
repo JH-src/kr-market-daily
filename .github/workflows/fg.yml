@@ -1,0 +1,35 @@
+name: fear-greed
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '40 23 * * 0-4'   # 평일 08:40 KST: 전날 거래소·미국 자료로 공포·탐욕 지수 갱신
+permissions:
+  contents: write
+concurrency:
+  group: kis
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q pandas numpy tabulate
+      - name: 거래소 최근 자료(키가 등록된 경우)
+        env:
+          KRX_KEY: ${{ secrets.KRX_KEY }}
+        run: |
+          if [ -n "$KRX_KEY" ]; then cd src && python3 collect.py krx $(date -u -d '-10 day' +%F) $(date -u +%F) 1500 || echo "거래소 수집 실패"; else echo "KRX_KEY 미등록: 거래소 자료는 기존 것 사용"; fi
+      - name: 미국 시장 폭·신고가(한투, 조회 전용)
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+        run: cd src && python3 kis_us_hist.py recent || echo "미국 갱신 실패"
+      - name: 공포·탐욕 지수
+        run: cd src && python3 fear_greed.py
+      - name: 저장
+        run: |
+          git config user.name "fg-bot"; git config user.email "fg-bot@users.noreply.github.com"
+          git add data/fg data/macro data/stk data/ksq data/idx_kospi data/idx_kosdaq data/idx_drv data/idx_bond data/idx_krx data/opt_summary data/etf data/_calendar 2>/dev/null
+          git commit -m "공포·탐욕 지수 갱신" || exit 0
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
