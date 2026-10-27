@@ -14,7 +14,13 @@ KEY, SEC = os.environ['KIS_APP_KEY'], os.environ['KIS_APP_SECRET']
 def token():
     body = json.dumps({'grant_type': 'client_credentials', 'appkey': KEY, 'appsecret': SEC}).encode()
     req = urllib.request.Request(BASE + '/oauth2/tokenP', data=body, headers={'content-type': 'application/json'})
-    return json.loads(urllib.request.urlopen(req, timeout=30).read())['access_token']
+    for i in range(4):                      # 토큰 발급은 1분에 1회 제한 → 거절되면 65초 뒤 다시
+        try:
+            return json.loads(urllib.request.urlopen(req, timeout=30).read())['access_token']
+        except urllib.error.HTTPError as e:
+            if e.code != 403 or i == 3:
+                raise
+            time.sleep(65)
 
 
 def call(tok, path, tr, params):
