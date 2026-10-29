@@ -18,6 +18,11 @@ c('일별', 'inquire-daily-price', 'FHKST01010400', dict(p, FID_PERIOD_DIV_CODE=
 for hh in ('153000', '150000', '140000', '120000', '100000', '090500'):
     c(f'시간대별체결_{hh}', 'inquire-time-itemconclusion', 'FHPST01060000', dict(p, FID_INPUT_HOUR_1=hh))
 c('최근체결', 'inquire-ccnl', 'FHKST01010300', p)
+d0 = time.strftime('%Y%m%d', time.gmtime(time.time() + 9 * 3600))
+c('투자자일별', 'investor-trade-by-stock-daily', 'FHPTJ04160001', dict(p, FID_INPUT_DATE_1=d0, FID_ORG_ADJ_PRC='', FID_ETC_CLS_CODE=''))
+c('일봉차트', 'inquire-daily-itemchartprice', 'FHKST03010100', dict(p, FID_INPUT_DATE_1=d0, FID_INPUT_DATE_2=d0, FID_PERIOD_DIV_CODE='D', FID_ORG_ADJ_PRC='0'))
+c('시간외호가', 'inquire-overtime-asking-price', 'FHPST02300400', p)
+c('분봉', 'inquire-time-itemchartprice', 'FHKST03010200', dict(p, FID_ETC_CLS_CODE='', FID_INPUT_HOUR_1='180000', FID_PW_DATA_INCU_YN='Y'))
 d = time.strftime('%Y%m%d', time.gmtime(time.time() + 9 * 3600))
 os.makedirs(os.path.join(ROOT, 'data', 'kis', 'probe'), exist_ok=True)
 json.dump(out, open(os.path.join(ROOT, 'data', 'kis', 'probe', f'block_{code}_{d}.json'), 'w'), ensure_ascii=False, indent=1)
