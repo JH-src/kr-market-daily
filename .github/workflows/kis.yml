@@ -35,6 +35,7 @@ jobs:
           if grep -q idxdaily ../kis/trigger.txt 2>/dev/null; then python3 kis_idx_daily.py; exit 0; fi
           if grep -q fundshist ../kis/trigger.txt 2>/dev/null; then python3 kis_funds_hist.py; exit 0; fi
           if grep -q usprobe ../kis/trigger.txt 2>/dev/null; then python3 kis_us_probe.py; exit 0; fi
+          if grep -q fxdaily ../kis/trigger.txt 2>/dev/null; then python3 kis_fx.py; exit 0; fi
           fi
           D=""; [ "${{ github.event_name }}" = "push" ] && D=$(grep -o "date=[0-9]*" ../kis/trigger.txt | cut -d= -f2)
           python3 kis_eod.py $D || echo "eod 실패"
