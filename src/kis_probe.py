@@ -28,10 +28,14 @@ def call(tok, path, tr, params):
     req = urllib.request.Request(f'{BASE}{path}?{q}', headers={
         'content-type': 'application/json; charset=utf-8', 'authorization': f'Bearer {tok}',
         'appkey': KEY, 'appsecret': SEC, 'tr_id': tr, 'custtype': 'P', 'tr_cont': ''})
-    try:
-        return json.loads(urllib.request.urlopen(req, timeout=30).read())
-    except urllib.error.HTTPError as e:
-        return {'http_error': e.code, 'body': e.read().decode('utf-8', 'ignore')[:500]}
+    for i in range(3):
+        try:
+            return json.loads(urllib.request.urlopen(req, timeout=30).read())
+        except urllib.error.HTTPError as e:
+            return {'http_error': e.code, 'body': e.read().decode('utf-8', 'ignore')[:500]}
+        except Exception as e:      # 연결 끊김·시간 초과는 잠시 뒤 다시(2026-10-30: 한 건 실패로 전체 수집이 멈춘 문제)
+            err = str(e); time.sleep(3 * (i + 1))
+    return {'net_error': err}
 
 
 Q = '/uapi/domestic-stock/v1/quotations/'
