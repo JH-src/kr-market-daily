@@ -26,7 +26,14 @@ def main():
         c, m = line.strip().split(',')[:2]
         mk[c] = m
     tok = K.token()
-    today = sys.argv[1] if len(sys.argv) > 1 else time.strftime('%Y%m%d', time.gmtime(time.time() + 9 * 3600))
+    now = time.gmtime(time.time() + 9 * 3600)
+    if len(sys.argv) > 1:
+        today = sys.argv[1]
+    elif (now.tm_hour, now.tm_min) < (15, 35):
+        # 예약 실행이 늦어져 자정을 넘기면 전날 시세가 오늘 날짜로 저장되던 문제(2026-10-30 발견) 방지
+        print('장 마감 전(또는 자정 이후 지연 실행)이라 건너뜀'); return
+    else:
+        today = time.strftime('%Y%m%d', now)
 
     def one(c):
         for _ in range(3):
@@ -42,7 +49,7 @@ def main():
                 bars = [x for x in (mb.get('output2') or []) if x.get('stck_bsop_date') == today and x.get('stck_cntg_hour', '') <= '153000']
                 if bars:
                     close, src = max(bars, key=lambda x: x['stck_cntg_hour'])['stck_prpr'], 'min1530'
-                elif time.gmtime(time.time() + 9 * 3600).tm_hour < 16:
+                elif time.strftime('%Y%m%d', time.gmtime(time.time() + 9 * 3600)) == today and time.gmtime(time.time() + 9 * 3600).tm_hour < 16:
                     close, src = o['stck_prpr'], 'prpr'
                 if close is None:
                     return None
