@@ -29,12 +29,12 @@ def iseries(name, nm):
 
 
 def prices(mk):
-    fs = sorted(f for f in glob.glob(f'{D}/{mk}/20*/*.csv.gz') if os.path.basename(f)[:8] >= START)
-    d = pd.concat([pd.read_csv(f, dtype=str, usecols=lambda c: c in ('BAS_DD', 'ISU_CD', 'ISU_NM', 'TDD_CLSPRC')) for f in fs])
-    d = d[~d['ISU_NM'].str.contains('스팩', na=False)]
-    w = d.assign(p=num(d['TDD_CLSPRC'])).pivot_table(index='BAS_DD', columns='ISU_CD', values='p')
+    # archive(연도 묶음)와 data(일별)를 합쳐 읽는다(2026-11-03: data/만 읽어 코스닥 2025년 1~5월이 비던 문제 수정)
+    d = rd(mk, ('BAS_DD', 'ISU_CD', 'ISU_NM', 'TDD_CLSPRC'))
+    d = d[(d['BAS_DD'] >= START) & ~d['ISU_NM'].str.contains('스팩', na=False)].drop_duplicates(['BAS_DD', 'ISU_CD'], keep='last')
+    w = d.assign(p=num(d['TDD_CLSPRC'])).pivot(index='BAS_DD', columns='ISU_CD', values='p')
     w.index = pd.to_datetime(w.index)
-    return w
+    return w.sort_index()
 
 
 def breadth(w):
@@ -107,6 +107,8 @@ def main():
     pd.concat(comp, axis=1).round(1).loc['2011-06-01':].to_csv(os.path.join(OUT, 'fg_components.csv'))
     for nm, c in comp.items():
         s = fg[nm].dropna()
+        if s.empty:
+            print(nm, '값 없음'); continue
         print(nm, s.index.min().date(), s.index.max().date(), '최근', s.iloc[-1], '항목수', int(c.iloc[-1].notna().sum()), c.iloc[-1].round(0).to_dict())
 
 
