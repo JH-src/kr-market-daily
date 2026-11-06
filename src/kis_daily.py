@@ -109,7 +109,7 @@ def main():
     # 코스피200 선물 투자자별 당일 순매수(일별 과거 조회가 안 돼 매일 쌓음, 2026-11-06 추가)
     r = K.call(tok, Q + 'inquire-investor-time-by-market', 'FHPTJ04030000', {'FID_INPUT_ISCD': 'K2I', 'FID_INPUT_ISCD_2': 'F001'})
     o = (r.get('output') or [{}])[0]
-    if o.get('frgn_seln_vol') not in (None, '0'):
+    if o.get('frgn_seln_vol') not in (None, '0') and 15 <= time.gmtime(time.time() + 9 * 3600).tm_hour <= 23:  # 자정 넘긴 지연 실행은 날짜가 어긋나므로 기록 안 함
         upsert(os.path.join(OUT, 'fut_investor_k200.csv'), [{'date': today, **o}], 'date')
     time.sleep(0.3)
 
