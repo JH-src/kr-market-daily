@@ -1,22 +1,25 @@
-"""선물 투자자별 매매동향 조회 방법 탐색(조회 전용) -> data/kis/probe/futinv_probe.json"""
+"""선물 투자자별 매매동향(일별) 조회 방법 탐색 2차(조회 전용) -> data/kis/probe/futinv_probe2.json"""
 import json, os, time
 import kis_probe as K
 Q = '/uapi/domestic-stock/v1/quotations/'
 tok = K.token(); out = {}
-d1, d2 = '20260901', '20261106'
-for i1 in ['K2I', 'F001', 'KFU', 'KSP']:
-    for isc in ['F001', '0001', '101']:
-        r = K.call(tok, Q + 'inquire-investor-daily-by-market', 'FHPTJ04040000',
-                   {'FID_COND_MRKT_DIV_CODE': 'U', 'FID_INPUT_ISCD': isc, 'FID_INPUT_DATE_1': d2,
-                    'FID_INPUT_ISCD_1': i1, 'FID_INPUT_DATE_2': d2, 'FID_INPUT_ISCD_2': isc})
-        o = r.get('output') or []
-        out[f'daily_{i1}_{isc}'] = {'rt': r.get('rt_cd'), 'msg': r.get('msg1'), 'n': len(o), 'head': o[:2], 'err': r.get('http_error') or r.get('net_error')}
-        time.sleep(0.4)
-for i1, i2 in [('999', 'F001'), ('999', 'K2I'), ('K2I', 'F001'), ('KSP', '0001')]:
-    r = K.call(tok, Q + 'inquire-investor-time-by-market', 'FHPTJ04030000', {'FID_INPUT_ISCD': i1, 'FID_INPUT_ISCD_2': i2})
+d = '20261106'
+tries = []
+for cond in ['F', 'JF', 'W', 'U']:
+    for isc, i1 in [('F001', 'K2I'), ('101', 'K2I'), ('K2I', 'K2I'), ('F001', 'F001'), ('0001', 'K2I')]:
+        tries.append(('daily', cond, isc, i1))
+for t, cond, isc, i1 in tries:
+    r = K.call(tok, Q + 'inquire-investor-daily-by-market', 'FHPTJ04040000',
+               {'FID_COND_MRKT_DIV_CODE': cond, 'FID_INPUT_ISCD': isc, 'FID_INPUT_DATE_1': d,
+                'FID_INPUT_ISCD_1': i1, 'FID_INPUT_DATE_2': d, 'FID_INPUT_ISCD_2': isc})
     o = r.get('output') or []
-    out[f'time_{i1}_{i2}'] = {'rt': r.get('rt_cd'), 'msg': r.get('msg1'), 'n': len(o) if isinstance(o, list) else 1, 'head': o[:2] if isinstance(o, list) else o}
+    nz = [x for x in o if x.get('frgn_ntby_qty') not in ('0', None)]
+    out[f'{cond}_{isc}_{i1}'] = {'rt': r.get('rt_cd'), 'msg': r.get('msg1'), 'n': len(o), 'nz': len(nz), 'head': (nz or o)[:2], 'err': r.get('http_error')}
     time.sleep(0.4)
-os.makedirs('../data/kis/probe', exist_ok=True)
-json.dump(out, open('../data/kis/probe/futinv_probe.json', 'w'), ensure_ascii=False, indent=1)
-print({k: (v['rt'], v['msg'], v['n']) for k, v in out.items()})
+# 시간대별(당일) 시장 투자자: 과거 날짜 지정 가능 여부
+for extra in [{'FID_INPUT_DATE_1': '20261030'}, {}]:
+    p = {'FID_INPUT_ISCD': 'K2I', 'FID_INPUT_ISCD_2': 'F001'}; p.update(extra)
+    r = K.call(tok, Q + 'inquire-investor-time-by-market', 'FHPTJ04030000', p)
+    out['time_' + str(extra)] = {'rt': r.get('rt_cd'), 'msg': r.get('msg1'), 'head': (r.get('output') or [])[:1]}
+json.dump(out, open('../data/kis/probe/futinv_probe2.json', 'w'), ensure_ascii=False, indent=1)
+print({k: (v.get('rt'), v.get('n'), v.get('nz')) for k, v in out.items()})
