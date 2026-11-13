@@ -9,7 +9,8 @@ os.makedirs(OUT, exist_ok=True)
 tok = K.token()
 import datetime as dt
 today = dt.date.fromtimestamp(time.time() + 9 * 3600)
-first = dt.date(today.year, 1, 1)                    # 올해 1월 1일부터(구간당 최대 100건이라 60일씩 나눠 받음)
+import sys
+first = dt.datetime.strptime(sys.argv[1], '%Y%m%d').date() if len(sys.argv) > 1 else dt.date(today.year, 1, 1)   # 기본은 올해 1월 1일부터(구간당 최대 100건이라 60일씩 나눠 받음)
 for code in ('0001', '1001'):
     allr, a = {}, first
     while a <= today:
